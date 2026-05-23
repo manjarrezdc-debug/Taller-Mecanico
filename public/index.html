@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Sistema local de gestión y control para Taller Beltrán. Administración de vehículos, inventario de recepción y órdenes de servicio.">
+  <title>Taller Beltrán - Gestión de Taller Mecánico</title>
+  
+  <script>
+    // Capturador de errores global para facilitar el diagnóstico del sistema
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.error("Error capturado: ", message, source, lineno, colno, error);
+      
+      // Crear u obtener el banner de depuración
+      let banner = document.getElementById('debug-error-banner');
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'debug-error-banner';
+        banner.style.position = 'fixed';
+        banner.style.bottom = '15px';
+        banner.style.right = '15px';
+        banner.style.maxWidth = '400px';
+        banner.style.backgroundColor = '#ef4444';
+        banner.style.color = '#ffffff';
+        banner.style.padding = '12px';
+        banner.style.borderRadius = '8px';
+        banner.style.boxShadow = '0 6px 20px rgba(0,0,0,0.5)';
+        banner.style.zIndex = '999999';
+        banner.style.fontSize = '0.85rem';
+        banner.style.fontFamily = 'monospace';
+        banner.style.border = '1px solid #fca5a5';
+        document.body.appendChild(banner);
+      }
+      const filename = source ? source.split('/').pop() : 'inline';
+      banner.innerHTML = '<div style="font-weight:bold;margin-bottom:4px;color:#ffedd5;">⚠️ Error detectado en el navegador:</div>' + 
+                         '<div style="margin-bottom:6px;word-break:break-all;">' + message + '</div>' +
+                         '<div style="color:#fca5a5;font-size:0.75rem;">Archivo: ' + filename + ' (Línea ' + lineno + ':' + colno + ')</div>';
+      
+      // Intentar reportar al servidor Express
+      fetch('/api/client-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: message,
+          source: source,
+          lineno: lineno,
+          colno: colno,
+          stack: error ? error.stack : ''
+        })
+      }).catch(err => console.warn('Error al reportar al servidor:', err));
+      
+      return false; // Permite que se vea también en la consola del desarrollador
+    };
+
+    window.onunhandledrejection = function(event) {
+      const reason = event.reason;
+      const msg = "Promesa rechazada no capturada: " + (reason ? (reason.message || reason) : 'razón desconocida');
+      window.onerror(msg, window.location.href, 0, 0, reason instanceof Error ? reason : null);
+    };
+  </script>
+
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css" rel="stylesheet">
+  <!-- Custom Premium Styles -->
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- ================= PANTALLA DE LOGIN ================= -->
+  <div id="login-view" class="login-container">
+    <div class="login-card fade-in-section">
+      <div class="text-center mb-4">
+        <div class="mb-2">
+          <i class="bi bi-wrench-adjustable-circle-fill" style="font-size: 3rem; color: #38bdf8;"></i>
+        </div>
+        <h2 class="brand-title">TALLER BELTRÁN</h2>
+        <p class="text-muted">Control de Recepción e Historial</p>
+      </div>
+      
+      <form id="login-form" novalidate>
+        <div class="mb-3">
+          <label for="username" class="form-label-custom">Usuario</label>
+          <div class="input-group">
+            <span class="input-group-text bg-dark border-secondary text-secondary"><i class="bi bi-person"></i></span>
+            <input type="text" id="username" class="form-control form-control-custom" placeholder="admin" required>
+          </div>
+        </div>
+        <div class="mb-4">
+          <label for="password" class="form-label-custom">Contraseña</label>
+          <div class="input-group">
+            <span class="input-group-text bg-dark border-secondary text-secondary"><i class="bi bi-lock"></i></span>
+            <input type="password" id="password" class="form-control form-control-custom" placeholder="••••••••" required>
+          </div>
+        </div>
+        
+        <div id="login-error" class="alert alert-danger p-2 text-center" style="display: none; font-size: 0.875rem;"></div>
+        
+        <button type="submit" class="btn btn-primary-custom w-100">
+          Iniciar Sesión <i class="bi bi-box-arrow-in-right ms-1"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= APLICACIÓN PRINCIPAL (DASHBOARD) ================= -->
+  <div id="app-view" style="display: none;">
+    <!-- Encabezado / Navbar -->
+    <header class="dashboard-header d-flex justify-content-between align-items-center">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-wrench-adjustable-circle-fill text-info" style="font-size: 1.8rem;"></i>
+        <span class="brand-title">Taller Beltrán</span>
+      </div>
+      
+      <div class="d-flex align-items-center gap-3">
+        <div class="text-end d-none d-sm-block">
+          <span class="d-block fw-semibold text-light" style="font-size: 0.9rem;">Administrador</span>
+          <small class="text-success"><i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i> En línea</small>
+        </div>
+        <button id="logout-btn" class="btn btn-secondary-custom py-1.5 px-3" title="Cerrar sesión">
+          Salir <i class="bi bi-box-arrow-right ms-1"></i>
+        </button>
+      </div>
+    </header>
+
+    <div class="container-fluid py-4 px-3 px-md-5">
+      <div class="row g-4">
+        <!-- Barra Lateral de Navegación -->
+        <div class="col-lg-3 col-md-4">
+          <div class="glass-card mb-4">
+            <h5 class="fw-bold mb-3 text-info">Menú Principal</h5>
+            <div class="nav flex-column nav-pills nav-pills-custom">
+              <button class="nav-link active text-start mb-2" id="tab-search-btn" type="button">
+                <i class="bi bi-search me-2"></i> Buscar Vehículos
+              </button>
+              <button class="nav-link text-start" id="tab-reception-btn" type="button">
+                <i class="bi bi-plus-circle me-2"></i> Recepción de Auto
+              </button>
+            </div>
+          </div>
+          
+          <!-- Ficha de Resumen Rápido -->
+          <div class="glass-card d-none d-md-block">
+            <h6 class="fw-semibold text-secondary mb-3">Información Taller</h6>
+            <p class="small text-muted mb-2"><i class="bi bi-geo-alt me-2 text-info"></i> Acceso Local (Express Server)</p>
+            <p class="small text-muted mb-0"><i class="bi bi-database me-2 text-info"></i> Base de datos: SQLite3</p>
+          </div>
+        </div>
+
+        <!-- Panel de Contenido Principal -->
+        <div class="col-lg-9 col-md-8">
+          <div class="tab-content">
+            
+            <!-- PANEL: BUSCADOR DE VEHÍCULOS -->
+            <div id="pane-search" class="fade-in-section">
+              <div class="glass-card">
+                <h3 class="fw-bold mb-3"><i class="bi bi-search me-2 text-info"></i>Buscador de Vehículos</h3>
+                <p class="text-secondary">Encuentra registros rápidamente buscando por placa, número de serie de motor (VIN) o dueño.</p>
+                
+                <div class="input-group mb-4">
+                  <span class="input-group-text bg-dark border-secondary text-secondary"><i class="bi bi-search"></i></span>
+                  <input type="text" id="search-input" class="form-control form-control-custom" placeholder="Escribe placa, motor, dueño...">
+                </div>
+                
+                <div id="search-results" class="row g-3">
+                  <!-- Aquí se inyectarán las tarjetas de búsqueda dinámicamente -->
+                </div>
+              </div>
+            </div>
+
+            <!-- PANEL: FORMULARIO DE RECEPCIÓN -->
+            <div id="pane-reception" class="d-none fade-in-section">
+              <div class="glass-card">
+                <h3 class="fw-bold mb-4"><i class="bi bi-file-earmark-plus me-2 text-info"></i>Formulario de Recepción</h3>
+                
+                <form id="reception-form" class="needs-validation" novalidate enctype="multipart/form-data">
+                  <div class="accordion" id="formAccordion">
+                    
+                    <!-- Sección 1: Datos del Auto -->
+                    <div class="accordion-item bg-transparent border-secondary mb-3">
+                      <h2 class="accordion-header">
+                        <button class="accordion-button bg-secondary text-light border-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne">
+                          <i class="bi bi-car-front me-2 text-info"></i> 1. Datos del Vehículo
+                        </button>
+                      </h2>
+                      <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#formAccordion">
+                        <div class="accordion-body bg-dark text-light border-top border-secondary">
+                          <div class="row g-3">
+                            <div class="col-md-4">
+                              <label for="marca" class="form-label-custom">Marca</label>
+                              <input type="text" id="marca" name="marca" class="form-control form-control-custom" placeholder="Ej: Toyota" required>
+                            </div>
+                            <div class="col-md-4">
+                              <label for="modelo" class="form-label-custom">Modelo</label>
+                              <input type="text" id="modelo" name="modelo" class="form-control form-control-custom" placeholder="Ej: Corolla" required>
+                            </div>
+                            <div class="col-md-4">
+                              <label for="ano" class="form-label-custom">Año</label>
+                              <input type="number" id="ano" name="ano" class="form-control form-control-custom" placeholder="Ej: 2020" min="1900" max="2027" required>
+                            </div>
+                            <div class="col-md-4">
+                              <label for="color" class="form-label-custom">Color</label>
+                              <input type="text" id="color" name="color" class="form-control form-control-custom" placeholder="Ej: Gris Plata" required>
+                            </div>
+                            <div class="col-md-4">
+                              <label for="cilindrada" class="form-label-custom">Cilindrada</label>
+                              <input type="text" id="cilindrada" name="cilindrada" class="form-control form-control-custom" placeholder="Ej: 1.8L / 4 Cilindros">
+                            </div>
+                            <div class="col-md-4">
+                              <label for="placa" class="form-label-custom">Placa (Patente)</label>
+                              <input type="text" id="placa" name="placa" class="form-control form-control-custom" placeholder="Ej: ABC-1234" required>
+                            </div>
+                            <div class="col-md-12">
+                              <label for="numero_serie_motor" class="form-label-custom">Número de Serie del Motor (VIN) <span class="text-danger">*</span></label>
+                              <input type="text" id="numero_serie_motor" name="numero_serie_motor" class="form-control form-control-custom" placeholder="Exactamente 17 caracteres alfanuméricos" maxlength="17" pattern="^[A-Za-z0-9]{17}$" required>
+                              <div class="invalid-feedback">
+                                El Número de Serie del Motor (VIN) es obligatorio, alfanumérico y debe tener exactamente 17 caracteres.
+                              </div>
+                            </div>
+                            <div class="col-md-6">
+                              <label for="dueno" class="form-label-custom">Nombre del Dueño</label>
+                              <input type="text" id="dueno" name="dueno" class="form-control form-control-custom" placeholder="Ej: Juan Pérez" required>
+                            </div>
+                            <div class="col-md-6">
+                              <label for="telefono" class="form-label-custom">Teléfono de Contacto</label>
+                              <input type="tel" id="telefono" name="telefono" class="form-control form-control-custom" placeholder="Ej: 555123456" required>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Sección 2: Inventario de Componentes -->
+                    <div class="accordion-item bg-transparent border-secondary mb-3">
+                      <h2 class="accordion-header">
+                        <button class="accordion-button bg-secondary text-light border-secondary collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo">
+                          <i class="bi bi-clipboard-check me-2 text-info"></i> 2. Inventario de Componentes y Estado
+                        </button>
+                      </h2>
+                      <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#formAccordion">
+                        <div class="accordion-body bg-dark text-light border-top border-secondary">
+                          <div class="row g-3">
+                            <div class="col-md-12 mb-3">
+                              <label for="nivel_combustible" class="form-label-custom d-flex justify-content-between">
+                                <span>Nivel de Combustible</span>
+                                <span id="combustible-val" class="text-info fw-bold">1/2 (Medio)</span>
+                              </label>
+                              <div class="fuel-track mb-2"></div>
+                              <input type="range" id="nivel_combustible" name="nivel_combustible" class="form-range" min="0" max="4" step="1" value="2">
+                              <div class="d-flex justify-content-between small text-secondary">
+                                <span>Vacío</span>
+                                <span>1/4</span>
+                                <span>1/2</span>
+                                <span>3/4</span>
+                                <span>Lleno</span>
+                              </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                              <label for="estado_espejos" class="form-label-custom">Espejos Retrovisores</label>
+                              <select id="estado_espejos" name="estado_espejos" class="form-select form-select-custom">
+                                <option value="Buen Estado">Buen Estado</option>
+                                <option value="Rayado">Rayado</option>
+                                <option value="Roto">Roto</option>
+                                <option value="Faltante">Faltante</option>
+                              </select>
+                            </div>
+                            <div class="col-md-4">
+                              <label for="estado_antena" class="form-label-custom">Antena</label>
+                              <select id="estado_antena" name="estado_antena" class="form-select form-select-custom">
+                                <option value="Buen Estado">Buen Estado</option>
+                                <option value="Rayado">Rayado</option>
+                                <option value="Roto">Roto</option>
+                                <option value="Faltante">Faltante</option>
+                              </select>
+                            </div>
+                            <div class="col-md-4">
+                              <label for="estado_stereo" class="form-label-custom">Estéreo / Radio</label>
+                              <select id="estado_stereo" name="estado_stereo" class="form-select form-select-custom">
+                                <option value="Buen Estado">Buen Estado</option>
+                                <option value="Rayado">Rayado</option>
+                                <option value="Roto">Roto</option>
+                                <option value="Faltante">Faltante</option>
+                              </select>
+                            </div>
+                            <div class="col-md-6">
+                              <label for="estado_cristal" class="form-label-custom">Cristales / Parabrisas</label>
+                              <select id="estado_cristal" name="estado_cristal" class="form-select form-select-custom">
+                                <option value="Buen Estado">Buen Estado</option>
+                                <option value="Rayado">Rayado</option>
+                                <option value="Roto">Roto</option>
+                                <option value="Faltante">Faltante</option>
+                              </select>
+                            </div>
+                            <div class="col-md-6">
+                              <label for="estado_copas" class="form-label-custom">Copas / Tapas de Ruedas</label>
+                              <select id="estado_copas" name="estado_copas" class="form-select form-select-custom">
+                                <option value="Buen Estado">Buen Estado</option>
+                                <option value="Rayado">Rayado</option>
+                                <option value="Roto">Roto</option>
+                                <option value="Faltante">Faltante</option>
+                              </select>
+                            </div>
+                            
+                            <div class="col-12">
+                              <label for="notas_estado_general" class="form-label-custom">Notas del Estado General (Rayones adicionales, golpes, etc.)</label>
+                              <textarea id="notas_estado_general" name="notas_estado_general" class="form-control form-control-custom" rows="3" placeholder="Detalle observaciones sobre el chasis, golpes visibles o fallas reportadas por el cliente..."></textarea>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Sección 3: Carga de Fotografías -->
+                    <div class="accordion-item bg-transparent border-secondary mb-3">
+                      <h2 class="accordion-header">
+                        <button class="accordion-button bg-secondary text-light border-secondary collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree">
+                          <i class="bi bi-camera me-2 text-info"></i> 3. Carga de Fotos de Recepción
+                        </button>
+                      </h2>
+                      <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#formAccordion">
+                        <div class="accordion-body bg-dark text-light border-top border-secondary">
+                          <div class="mb-3">
+                            <label for="fotos" class="form-label-custom">Seleccionar Fotos del Auto (Múltiples permitidas)</label>
+                            <input type="file" id="fotos" name="fotos" class="form-control form-control-custom" accept="image/jpeg,image/png,image/webp" multiple>
+                            <small class="text-muted d-block mt-1">Formatos admitidos: JPG, PNG, WEBP. Tamaño máx: 5MB por foto.</small>
+                          </div>
+                          <!-- Previsualización de imágenes seleccionadas -->
+                          <div id="previews-container" class="upload-preview-container"></div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  <div id="reception-error" class="alert alert-danger mt-3" style="display: none;"></div>
+                  <div id="reception-success" class="alert alert-success mt-3" style="display: none;"></div>
+
+                  <div class="mt-4 text-end">
+                    <button type="submit" id="submit-reception-btn" class="btn btn-primary-custom">
+                      <i class="bi bi-save me-2"></i> Registrar Recepción
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- PANEL DETALLE: VISTA DEL AUTO E HISTORIAL -->
+            <div id="pane-profile" class="d-none fade-in-section">
+              <!-- Botón Volver -->
+              <button id="profile-back-btn" class="btn btn-secondary-custom mb-3">
+                <i class="bi bi-arrow-left me-1"></i> Volver a Búsqueda
+              </button>
+
+              <div class="row g-4">
+                <!-- Columna Izquierda: Ficha e Inventario -->
+                <div class="col-lg-5 col-md-12">
+                  <!-- Tarjeta del Vehículo -->
+                  <div class="glass-card mb-4">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                      <div>
+                        <h4 id="profile-title" class="fw-bold text-light mb-0">Toyota Corolla</h4>
+                        <span id="profile-placa" class="badge bg-info text-dark fw-bold mt-1">ABC-1234</span>
+                      </div>
+                      <i class="bi bi-car-front text-secondary" style="font-size: 2.5rem;"></i>
+                    </div>
+                    <hr class="border-secondary">
+                    <div class="row g-2 small text-secondary">
+                      <div class="col-6"><strong>Año:</strong> <span id="profile-ano" class="text-light">-</span></div>
+                      <div class="col-6"><strong>Color:</strong> <span id="profile-color" class="text-light">-</span></div>
+                      <div class="col-6"><strong>Cilindrada:</strong> <span id="profile-cilindrada" class="text-light">-</span></div>
+                      <div class="col-12"><strong>N° Serie / VIN:</strong> <span id="profile-vin" class="text-light fw-semibold">-</span></div>
+                    </div>
+                    <hr class="border-secondary">
+                    <div class="small">
+                      <p class="mb-1 text-secondary"><strong>Dueño:</strong> <span id="profile-dueno" class="text-light">-</span></p>
+                      <p class="mb-0 text-secondary"><strong>Teléfono:</strong> <span id="profile-telefono" class="text-light">-</span></p>
+                    </div>
+                  </div>
+
+                  <!-- Inventario de Recepción -->
+                  <div class="glass-card mb-4">
+                    <h5 class="fw-bold mb-3 text-info"><i class="bi bi-journal-list me-2"></i>Estado Inicial de Entrada</h5>
+                    
+                    <div class="mb-3">
+                      <span class="text-secondary small d-block mb-1">Combustible al ingresar:</span>
+                      <div class="progress bg-dark" style="height: 12px; border-radius: 6px;">
+                        <div id="profile-combustible-bar" class="progress-bar bg-warning" role="progressbar" style="width: 50%;"></div>
+                      </div>
+                      <div class="d-flex justify-content-between small text-secondary mt-1" style="font-size: 0.75rem;">
+                        <span>Vacio</span>
+                        <span id="profile-combustible-txt" class="fw-bold text-light">1/2</span>
+                        <span>Lleno</span>
+                      </div>
+                    </div>
+
+                    <ul class="list-group list-group-flush bg-transparent">
+                      <li class="list-group-item bg-transparent border-secondary d-flex justify-content-between align-items-center px-0 text-secondary">
+                        <span>Retrovisores:</span>
+                        <span id="profile-espejos" class="state-badge">-</span>
+                      </li>
+                      <li class="list-group-item bg-transparent border-secondary d-flex justify-content-between align-items-center px-0 text-secondary">
+                        <span>Antena:</span>
+                        <span id="profile-antena" class="state-badge">-</span>
+                      </li>
+                      <li class="list-group-item bg-transparent border-secondary d-flex justify-content-between align-items-center px-0 text-secondary">
+                        <span>Estéreo:</span>
+                        <span id="profile-stereo" class="state-badge">-</span>
+                      </li>
+                      <li class="list-group-item bg-transparent border-secondary d-flex justify-content-between align-items-center px-0 text-secondary">
+                        <span>Cristales:</span>
+                        <span id="profile-cristal" class="state-badge">-</span>
+                      </li>
+                      <li class="list-group-item bg-transparent border-secondary d-flex justify-content-between align-items-center px-0 text-secondary">
+                        <span>Copas / Tapas:</span>
+                        <span id="profile-copas" class="state-badge">-</span>
+                      </li>
+                    </ul>
+                    
+                    <div class="mt-3">
+                      <strong class="text-secondary small d-block">Notas Generales:</strong>
+                      <p id="profile-notas" class="small text-light p-2 bg-dark rounded border border-secondary mt-1" style="min-height: 50px;">Sin notas adicionales.</p>
+                      <small class="text-secondary">Registrado el: <span id="profile-fecha" class="text-light">-</span></small>
+                    </div>
+                  </div>
+
+                  <!-- Galería de Fotos -->
+                  <div class="glass-card">
+                    <h5 class="fw-bold mb-3 text-info"><i class="bi bi-images me-2"></i>Fotos de Estado Inicial</h5>
+                    <div id="profile-gallery" class="row g-2">
+                      <!-- Thumbnails inyectados dinámicamente -->
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Columna Derecha: Historial y Órdenes -->
+                <div class="col-lg-7 col-md-12">
+                  <div class="glass-card">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                      <h4 class="fw-bold mb-0 text-info"><i class="bi bi-clock-history me-2"></i>Historial de Reparaciones</h4>
+                      <button id="add-order-btn" class="btn btn-primary-custom btn-sm">
+                        <i class="bi bi-plus-lg me-1"></i> Nueva Orden
+                      </button>
+                    </div>
+
+                    <!-- Timeline de Órdenes -->
+                    <div id="profile-timeline" class="timeline">
+                      <!-- Timeline items inyectados dinámicamente -->
+                    </div>
+
+                    <div id="empty-timeline-msg" class="text-center text-secondary py-4" style="display: none;">
+                      <i class="bi bi-info-circle" style="font-size: 2rem;"></i>
+                      <p class="mt-2 mb-0">No se registran órdenes de reparación para este auto.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: AGREGAR REPARACIÓN ================= -->
+  <div class="modal fade" id="orderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modal-content-custom">
+        <div class="modal-header modal-header-custom">
+          <h5 class="modal-title fw-bold" id="orderModalLabel"><i class="bi bi-plus-circle text-info me-2"></i>Nueva Orden de Reparación</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <form id="order-form" novalidate>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="order-desc" class="form-label-custom">Descripción del Trabajo / Reparación <span class="text-danger">*</span></label>
+              <textarea id="order-desc" class="form-control form-control-custom" rows="3" placeholder="Detalla el diagnóstico, piezas a cambiar o servicios a realizar..." required></textarea>
+              <div class="invalid-feedback">La descripción es obligatoria.</div>
+            </div>
+            
+            <div class="row g-3 mb-3">
+              <div class="col-6">
+                <label for="order-cost" class="form-label-custom">Costo Estimado ($)</label>
+                <input type="number" id="order-cost" class="form-control form-control-custom" placeholder="0.00" min="0" step="0.01">
+              </div>
+              <div class="col-6">
+                <label for="order-mecanico" class="form-label-custom">Mecánico Asignado</label>
+                <input type="text" id="order-mecanico" class="form-control form-control-custom" placeholder="Nombre del mecánico">
+              </div>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-6">
+                <label for="order-estado" class="form-label-custom">Estado Inicial de la Orden</label>
+                <select id="order-estado" class="form-select form-select-custom">
+                  <option value="Abierta">Abierta</option>
+                  <option value="Finalizada">Finalizada</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label for="order-fecha" class="form-label-custom">Fecha de Entrega Est. / Real</label>
+                <input type="date" id="order-fecha" class="form-control form-control-custom">
+              </div>
+            </div>
+            
+            <div id="order-error" class="alert alert-danger mt-3 p-2 text-center" style="display: none; font-size: 0.875rem;"></div>
+          </div>
+          <div class="modal-footer modal-footer-custom">
+            <button type="button" class="btn btn-secondary-custom" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary-custom">Guardar Orden</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: EXPANDIR FOTOGRAFÍA ================= -->
+  <div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content modal-content-custom">
+        <div class="modal-header modal-header-custom py-2">
+          <h6 class="modal-title fw-bold text-light">Visualizador de Fotos</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-center p-0 bg-black">
+          <img id="modal-expanded-img" src="" alt="Foto de estado inicial" class="img-fluid" style="max-height: 80vh;">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap 5 Bundle with Popper JS via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Client SPA Script -->
+  <script src="/js/app.js"></script>
+</body>
+</html>
