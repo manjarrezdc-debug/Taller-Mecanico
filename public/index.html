@@ -326,6 +326,11 @@
                             <input type="file" id="fotos" name="fotos" class="form-control form-control-custom" accept="image/jpeg,image/png,image/webp" multiple>
                             <small class="text-muted d-block mt-1">Formatos admitidos: JPG, PNG, WEBP. Tamaño máx: 5MB por foto.</small>
                           </div>
+                          <div class="mb-3 border-top border-secondary pt-3">
+                            <label for="formato_firmado" class="form-label-custom">Subir Formato de Recepción Firmado (Opcional)</label>
+                            <input type="file" id="formato_firmado" name="formato_firmado" class="form-control form-control-custom" accept="image/jpeg,image/png,image/webp,application/pdf">
+                            <small class="text-muted d-block mt-1">Formatos admitidos: JPG, PNG, WEBP o PDF. Tamaño máx: 5MB.</small>
+                          </div>
                           <!-- Previsualización de imágenes seleccionadas -->
                           <div id="previews-container" class="upload-preview-container"></div>
                         </div>
@@ -351,6 +356,9 @@
               <!-- Botón Volver -->
               <button id="profile-back-btn" class="btn btn-secondary-custom mb-3">
                 <i class="bi bi-arrow-left me-1"></i> Volver a Búsqueda
+              </button>
+              <button id="profile-print-btn" class="btn btn-primary-custom mb-3 ms-2">
+                <i class="bi bi-printer me-1"></i> Imprimir Ficha
               </button>
 
               <div class="row g-4">
@@ -421,7 +429,16 @@
                     <div class="mt-3">
                       <strong class="text-secondary small d-block">Notas Generales:</strong>
                       <p id="profile-notas" class="small text-light p-2 bg-dark rounded border border-secondary mt-1" style="min-height: 50px;">Sin notas adicionales.</p>
-                      <small class="text-secondary">Registrado el: <span id="profile-fecha" class="text-light">-</span></small>
+                      <small class="text-secondary d-block mb-2">Registrado el: <span id="profile-fecha" class="text-light">-</span></small>
+                    </div>
+                    
+                    <hr class="border-secondary mt-2 mb-2">
+                    
+                    <div id="profile-signed-format-sec" class="mt-2">
+                      <strong class="text-secondary small d-block mb-1.5"><i class="bi bi-file-earmark-check text-info me-1"></i>Formato Firmado:</strong>
+                      <div id="profile-signed-format-status" class="mt-1">
+                        <!-- Inyectado dinámicamente con JS (Botón de descarga o formulario de subida) -->
+                      </div>
                     </div>
                   </div>
 
@@ -526,6 +543,127 @@
         </div>
         <div class="modal-body text-center p-0 bg-black">
           <img id="modal-expanded-img" src="" alt="Foto de estado inicial" class="img-fluid" style="max-height: 80vh;">
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================= PLANTILLA DE IMPRESIÓN (OCULTA EN PANTALLA) ================= -->
+  <div id="print-receipt-template" class="d-none-screen">
+    <div class="print-container">
+      <div class="print-header-layout">
+        <div class="header-logo">
+          <i class="bi bi-wrench-adjustable-circle-fill text-dark" style="font-size: 2.2rem; margin-right: 10px;"></i>
+          <h1 class="print-brand-title">TALLER BELTRÁN</h1>
+        </div>
+        <div class="header-info">
+          <p><strong>Fecha de Ingreso:</strong> <span id="print-fecha">-</span></p>
+          <p><strong>Ficha de Recepción N°:</strong> <span id="print-recepcion-id">-</span></p>
+        </div>
+      </div>
+      
+      <div class="print-divider"></div>
+      
+      <!-- Datos del Cliente y Vehículo -->
+      <div class="print-section-title">DETALLES DEL VEHÍCULO Y PROPIETARIO</div>
+      <div class="print-grid-2">
+        <div>
+          <p class="mb-1"><strong>Dueño / Cliente:</strong> <span id="print-dueno">-</span></p>
+          <p class="mb-1"><strong>Teléfono de Contacto:</strong> <span id="print-telefono">-</span></p>
+        </div>
+        <div>
+          <p class="mb-1"><strong>Vehículo:</strong> <span id="print-vehiculo">-</span></p>
+          <p class="mb-1"><strong>Placa (Patente):</strong> <span id="print-placa" class="print-placa-badge">-</span></p>
+        </div>
+      </div>
+      <div class="print-grid-3 mt-2">
+        <p class="mb-1"><strong>Año:</strong> <span id="print-ano">-</span></p>
+        <p class="mb-1"><strong>Color:</strong> <span id="print-color">-</span></p>
+        <p class="mb-1"><strong>Cilindrada:</strong> <span id="print-cilindrada">-</span></p>
+      </div>
+      <p class="mt-2 mb-1"><strong>Número de Serie Motor (VIN):</strong> <span id="print-vin" style="font-family: monospace; font-weight: bold; letter-spacing: 0.5px;">-</span></p>
+      
+      <div class="print-divider"></div>
+      
+      <!-- Inventario de Recepción -->
+      <div class="print-section-title">INVENTARIO Y ESTADO DE RECEPCIÓN</div>
+      
+      <!-- Combustible -->
+      <div class="print-fuel-container">
+        <p class="mb-1"><strong>Nivel de Combustible al Ingreso:</strong> <span id="print-combustible" style="font-weight: bold;">-</span></p>
+        <div class="print-fuel-visual-bar">
+          <div class="fuel-segment">Vacío</div>
+          <div class="fuel-segment">1/4</div>
+          <div class="fuel-segment">1/2</div>
+          <div class="fuel-segment">3/4</div>
+          <div class="fuel-segment">Lleno</div>
+          <div id="print-fuel-marker" class="print-fuel-marker">▼</div>
+        </div>
+      </div>
+      
+      <!-- Tabla de componentes -->
+      <table class="print-table mt-3">
+        <thead>
+          <tr>
+            <th style="width: 50%;">Componente</th>
+            <th style="width: 50%;">Estado Reportado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Espejos Retrovisores</td>
+            <td id="print-espejos">-</td>
+          </tr>
+          <tr>
+            <td>Antena</td>
+            <td id="print-antena">-</td>
+          </tr>
+          <tr>
+            <td>Estéreo / Radio</td>
+            <td id="print-stereo">-</td>
+          </tr>
+          <tr>
+            <td>Cristales / Parabrisas</td>
+            <td id="print-cristal">-</td>
+          </tr>
+          <tr>
+            <td>Copas / Tapas de ruedas</td>
+            <td id="print-copas">-</td>
+          </tr>
+        </tbody>
+      </table>
+      
+      <!-- Notas Generales -->
+      <div class="print-notes-section mt-3">
+        <strong>Notas de Inspección General (Daños adicionales, golpes, fallas reportadas):</strong>
+        <p id="print-notas" class="print-notes-text">-</p>
+      </div>
+
+      <div class="print-divider"></div>
+      
+      <!-- Registro de Fotos -->
+      <div class="print-section-title">FOTOGRAFÍAS DE ESTADO INICIAL</div>
+      <div id="print-photos-grid" class="print-photos-grid">
+        <!-- Se inyectan las imágenes aquí dinámicamente -->
+      </div>
+      
+      <!-- Contrato de Recepción -->
+      <div class="print-terms mt-3">
+        <p><strong>Términos del Servicio:</strong> Se deja constancia y conformidad del estado del vehículo al momento del ingreso según el inventario detallado. El taller no se hace responsable por objetos de valor no inventariados o no entregados a resguardo en la oficina. El cliente autoriza las pruebas mecánicas necesarias en la vía pública para diagnóstico.</p>
+      </div>
+      
+      <!-- Bloque de Firmas -->
+      <div class="print-signatures mt-4">
+        <div class="signature-block">
+          <div class="signature-line"></div>
+          <p><strong>Firma del Cliente</strong></p>
+          <p style="font-size: 0.75rem; color: #555;">Acepto inventario y condiciones</p>
+        </div>
+        <div class="signature-block">
+          <div class="signature-line"></div>
+          <p><strong>Firma del Receptor</strong></p>
+          <p style="font-size: 0.75rem; color: #555;">Taller Beltrán</p>
         </div>
       </div>
     </div>

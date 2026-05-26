@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- VARIABLES DE ESTADO LOCAL ---
   let currentVehicleId = null;
   let activeSession = false;
+  let currentVehicleData = null;
 
   // --- ELEMENTOS DEL DOM ---
   const loginView = document.getElementById('login-view');
@@ -199,6 +200,77 @@ document.addEventListener('DOMContentLoaded', () => {
     buscarVehiculos(searchInput.value);
   });
 
+  // --- BOTÓN IMPRIMIR FICHA ---
+  const profilePrintBtn = document.getElementById('profile-print-btn');
+  if (profilePrintBtn) {
+    profilePrintBtn.addEventListener('click', () => {
+      if (!currentVehicleData) {
+        alert("No hay datos de vehículo cargados para imprimir.");
+        return;
+      }
+      
+      const { vehiculo, inventario, fotografias } = currentVehicleData;
+      
+      // Mapear cabecera y fechas
+      const dateFormatted = new Date(inventario.fecha_ingreso).toLocaleString('es-ES', {
+        year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+      document.getElementById('print-fecha').innerText = dateFormatted;
+      document.getElementById('print-recepcion-id').innerText = inventario.id || 'N/A';
+      
+      // Mapear datos dueño y auto
+      document.getElementById('print-dueno').innerText = vehiculo.dueno || '-';
+      document.getElementById('print-telefono').innerText = vehiculo.telefono || '-';
+      document.getElementById('print-vehiculo').innerText = `${vehiculo.marca} ${vehiculo.modelo}` || '-';
+      document.getElementById('print-placa').innerText = vehiculo.placa || '-';
+      document.getElementById('print-ano').innerText = vehiculo.ano || '-';
+      document.getElementById('print-color').innerText = vehiculo.color || '-';
+      document.getElementById('print-cilindrada').innerText = vehiculo.cilindrada || '-';
+      document.getElementById('print-vin').innerText = vehiculo.numero_serie_motor || '-';
+      
+      // Mapear Combustible
+      const fuelText = inventario.nivel_combustible || '1/2 (Tanque Medio)';
+      document.getElementById('print-combustible').innerText = fuelText;
+      
+      // Posicionar marcador de combustible
+      let markerPos = "50%";
+      if (fuelText.includes('Vacío') || fuelText.includes('0')) markerPos = "10%";
+      else if (fuelText.includes('1/4') || fuelText.includes('1')) markerPos = "30%";
+      else if (fuelText.includes('1/2') || fuelText.includes('Medio') || fuelText.includes('2')) markerPos = "50%";
+      else if (fuelText.includes('3/4') || fuelText.includes('3')) markerPos = "70%";
+      else if (fuelText.includes('Lleno') || fuelText.includes('1/1') || fuelText.includes('4')) markerPos = "90%";
+      
+      document.getElementById('print-fuel-marker').style.left = markerPos;
+      
+      // Mapear tabla de componentes
+      document.getElementById('print-espejos').innerText = inventario.estado_espejos || 'Buen Estado';
+      document.getElementById('print-antena').innerText = inventario.estado_antena || 'Buen Estado';
+      document.getElementById('print-stereo').innerText = inventario.estado_stereo || 'Buen Estado';
+      document.getElementById('print-cristal').innerText = inventario.estado_cristal || 'Buen Estado';
+      document.getElementById('print-copas').innerText = inventario.estado_copas || 'Buen Estado';
+      
+      // Mapear Notas
+      document.getElementById('print-notas').innerText = inventario.notas_estado_general || 'Sin notas adicionales.';
+      
+      // Mapear fotos
+      const printPhotosGrid = document.getElementById('print-photos-grid');
+      printPhotosGrid.innerHTML = '';
+      if (fotografias && fotografias.length > 0) {
+        fotografias.forEach(foto => {
+          const photoDiv = document.createElement('div');
+          photoDiv.className = 'print-photo-item';
+          photoDiv.innerHTML = `<img src="${foto.ruta_archivo}" alt="Foto de ingreso">`;
+          printPhotosGrid.appendChild(photoDiv);
+        });
+      } else {
+        printPhotosGrid.innerHTML = '<p style="font-size: 9pt; color: #777; font-style: italic; grid-column: span 3; margin: 0;">No se adjuntaron fotos al ingresar el vehículo.</p>';
+      }
+      
+      // Lanzar la impresión del navegador
+      window.print();
+    });
+  }
+
   // --- SECCIÓN BUSCADOR ---
   searchInput.addEventListener('input', () => {
     buscarVehiculos(searchInput.value.trim());
@@ -367,6 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderVehicleProfile(data) {
+    currentVehicleData = data;
     const { vehiculo, inventario, fotografias, ordenes } = data;
 
     // 1. Datos Generales
@@ -405,6 +478,71 @@ document.addEventListener('DOMContentLoaded', () => {
       year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
     profileFecha.innerText = dateFormatted;
+
+    // 2.5. Formato de Recepción Firmado
+    const formatStatusDiv = document.getElementById('profile-signed-format-status');
+    if (formatStatusDiv) {
+      formatStatusDiv.innerHTML = '';
+      
+      if (inventario.formato_firmado) {
+        const isPdf = inventario.formato_firmado.toLowerCase().endsWith('.pdf');
+        const iconClass = isPdf ? 'bi-filetype-pdf text-danger' : 'bi-file-earmark-image text-success';
+        
+        formatStatusDiv.innerHTML = `
+          <div class="d-flex align-items-center justify-content-between p-2 bg-dark rounded border border-secondary">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi ${iconClass}" style="font-size: 1.5rem;"></i>
+              <span class="text-light small text-truncate" style="max-width: 150px;" title="${inventario.formato_firmado.split('/').pop()}">
+                ${inventario.formato_firmado.split('/').pop()}
+              </span>
+            </div>
+            <a href="${inventario.formato_firmado}" target="_blank" class="btn btn-secondary-custom btn-sm py-0.5 px-2">
+              <i class="bi bi-eye me-1"></i> Ver
+            </a>
+          </div>
+          <button class="btn btn-link btn-sm text-secondary p-0 mt-2 d-block small" id="profile-reupload-btn" style="text-decoration: none; font-size: 0.75rem;">
+            <i class="bi bi-arrow-repeat me-1"></i> Cambiar documento
+          </button>
+          
+          <div id="profile-upload-form-container" class="mt-2 d-none">
+            <form id="profile-upload-form" novalidate>
+              <div class="input-group">
+                <input type="file" id="profile-format-input" class="form-control form-control-custom form-control-sm" accept="image/jpeg,image/png,image/webp,application/pdf" required>
+                <button type="submit" class="btn btn-primary-custom btn-sm">Subir</button>
+              </div>
+              <div id="profile-upload-error" class="alert alert-danger p-1 mt-1 text-center small" style="display: none; font-size: 0.75rem;"></div>
+            </form>
+          </div>
+        `;
+        
+        const reuploadBtn = document.getElementById('profile-reupload-btn');
+        const uploadFormContainer = document.getElementById('profile-upload-form-container');
+        if (reuploadBtn && uploadFormContainer) {
+          reuploadBtn.addEventListener('click', () => {
+            uploadFormContainer.classList.toggle('d-none');
+            reuploadBtn.innerHTML = uploadFormContainer.classList.contains('d-none')
+              ? '<i class="bi bi-arrow-repeat me-1"></i> Cambiar documento'
+              : '<i class="bi bi-x-lg me-1"></i> Cancelar cambio';
+          });
+        }
+        
+        registerProfileUploadSubmit(vehiculo.id);
+        
+      } else {
+        formatStatusDiv.innerHTML = `
+          <p class="text-secondary small mb-2 text-center" style="font-style: italic;">No se ha cargado el formato firmado.</p>
+          <form id="profile-upload-form" novalidate>
+            <div class="input-group">
+              <input type="file" id="profile-format-input" class="form-control form-control-custom form-control-sm" accept="image/jpeg,image/png,image/webp,application/pdf" required>
+              <button type="submit" class="btn btn-primary-custom btn-sm"><i class="bi bi-upload"></i> Subir</button>
+            </div>
+            <div id="profile-upload-error" class="alert alert-danger p-1 mt-1 text-center small" style="display: none; font-size: 0.75rem;"></div>
+          </form>
+        `;
+        
+        registerProfileUploadSubmit(vehiculo.id);
+      }
+    }
 
     // 3. Galería de Fotos
     profileGallery.innerHTML = '';
@@ -568,5 +706,61 @@ document.addEventListener('DOMContentLoaded', () => {
       orderError.style.display = 'block';
     }
   });
+
+  // --- REGISTRAR EL SUBMIT DE CARGA DE FORMATO ---
+  function registerProfileUploadSubmit(vehiculoId) {
+    const uploadForm = document.getElementById('profile-upload-form');
+    if (uploadForm) {
+      uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fileInput = document.getElementById('profile-format-input');
+        const uploadError = document.getElementById('profile-upload-error');
+        
+        if (uploadError) uploadError.style.display = 'none';
+        
+        if (!fileInput || fileInput.files.length === 0) {
+          showUploadError("Selecciona un archivo primero.");
+          return;
+        }
+        
+        const file = fileInput.files[0];
+        const formData = new FormData();
+        formData.append('formato_firmado', file);
+        
+        const submitBtn = uploadForm.querySelector('button[type="submit"]');
+        const originalBtnHTML = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status"></span>`;
+        
+        try {
+          const res = await fetch(`/api/vehiculos/${vehiculoId}/formato-firmado`, {
+            method: 'POST',
+            body: formData
+          });
+          const data = await res.json();
+          
+          if (res.ok && data.success) {
+            verPerfilVehiculo(vehiculoId);
+          } else {
+            showUploadError(data.error || "Error al subir el archivo.");
+          }
+        } catch (err) {
+          showUploadError("Error de conexión con el servidor.");
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalBtnHTML;
+        }
+        
+        function showUploadError(msg) {
+          if (uploadError) {
+            uploadError.innerText = msg;
+            uploadError.style.display = 'block';
+          } else {
+            alert(msg);
+          }
+        }
+      });
+    }
+  }
 
 });

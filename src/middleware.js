@@ -52,13 +52,13 @@ const storage = multer.diskStorage({
   }
 });
 
-// Filtro de archivos para permitir solo imágenes
+// Filtro de archivos para permitir imágenes y documentos PDF
 const fileFilter = (req, file, cb) => {
-  const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
   if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Tipo de archivo no permitido. Solo se permiten imágenes JPEG, PNG y WEBP.'), false);
+    cb(new Error('Tipo de archivo no permitido. Solo se permiten imágenes JPEG, PNG, WEBP y archivos PDF.'), false);
   }
 };
 

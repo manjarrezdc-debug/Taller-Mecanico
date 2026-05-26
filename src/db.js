@@ -50,8 +50,22 @@ function initDb() {
       estado_copas TEXT,
       notas_estado_general TEXT,
       fecha_ingreso TEXT,
+      formato_firmado TEXT,
       FOREIGN KEY (vehiculo_id) REFERENCES vehiculos (id) ON DELETE CASCADE
     );`);
+
+    // Migración: Asegurar que existe la columna formato_firmado si la base de datos ya existía
+    db.run(`ALTER TABLE recepcion_inventario ADD COLUMN formato_firmado TEXT;`, (err) => {
+      if (err) {
+        if (err.message.includes('duplicate column name') || err.message.includes('already exists')) {
+          // Columna ya existente, no se requiere acción
+        } else {
+          console.error('Error al verificar migración de columna formato_firmado:', err.message);
+        }
+      } else {
+        console.log('Migración exitosa: Columna formato_firmado agregada a recepcion_inventario.');
+      }
+    });
 
     // Tabla: ordenes_historial
     db.run(`CREATE TABLE IF NOT EXISTS ordenes_historial (

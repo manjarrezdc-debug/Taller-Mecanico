@@ -152,8 +152,11 @@ app.get('/api/vehiculos/:id', requireAuth, async (req, res) => {
 
 // 3. Registrar vehículo + Inventario de entrada + Subida de imágenes (Multer)
 app.post('/api/vehiculos', requireAuth, (req, res) => {
-  // Procesamos la subida de fotos primero
-  upload.array('fotos', 10)(req, res, async function (err) {
+  // Procesamos la subida de fotos e inventario firmado
+  upload.fields([
+    { name: 'fotos', maxCount: 10 },
+    { name: 'formato_firmado', maxCount: 1 }
+  ])(req, res, async function (err) {
     if (err) {
       return res.status(400).json({ error: err.message });
     }
@@ -185,17 +188,24 @@ app.post('/api/vehiculos', requireAuth, (req, res) => {
       );
       const vehiculoId = vehiculoRes.lastID;
 
-      // 2. Insertar Inventario
+      // Obtener ruta del formato firmado si se subió
+      let formatoFirmadoRuta = null;
+      if (req.files && req.files['formato_firmado'] && req.files['formato_firmado'].length > 0) {
+        formatoFirmadoRuta = '/uploads/' + req.files['formato_firmado'][0].filename;
+      }
+
+      // 2. Insertar Inventario (incluyendo formato firmado)
       const fechaIngreso = new Date().toISOString();
       await dbRun(
-        `INSERT INTO recepcion_inventario (vehiculo_id, nivel_combustible, estado_espejos, estado_antena, estado_stereo, estado_cristal, estado_copas, notas_estado_general, fecha_ingreso)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [vehiculoId, nivel_combustible, estado_espejos, estado_antena, estado_stereo, estado_cristal, estado_copas, notas_estado_general, fechaIngreso]
+        `INSERT INTO recepcion_inventario (vehiculo_id, nivel_combustible, estado_espejos, estado_antena, estado_stereo, estado_cristal, estado_copas, notas_estado_general, fecha_ingreso, formato_firmado)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [vehiculoId, nivel_combustible, estado_espejos, estado_antena, estado_stereo, estado_cristal, estado_copas, notas_estado_general, fechaIngreso, formatoFirmadoRuta]
       );
 
       // 3. Insertar Fotografías
-      if (req.files && req.files.length > 0) {
-        for (const file of req.files) {
+      const fotosArr = req.files && req.files['fotos'] ? req.files['fotos'] : [];
+      if (fotosArr.length > 0) {
+        for (const file of fotosArr) {
           const relativePath = '/uploads/' + file.filename;
           await dbRun(
             `INSERT INTO fotografias (vehiculo_id, ruta_archivo) VALUES (?, ?)`,
@@ -206,7 +216,7 @@ app.post('/api/vehiculos', requireAuth, (req, res) => {
 
       res.status(201).json({ success: true, message: 'Vehículo registrado correctamente.', vehiculoId });
     } catch (error) {
-      // Si hay error en base de datos (ej: placa o VIN duplicado), eliminamos las imágenes para no dejar basura
+      // Si hay error en base de datos, eliminamos todos los archivos subidos para no dejar basura
       cleanupUploadedFiles(req.files);
       if (error.message.includes('UNIQUE constraint failed')) {
         return res.status(400).json({ error: 'La placa o el Número de Serie de Motor (VIN) ya se encuentran registrados.' });
@@ -216,10 +226,75 @@ app.post('/api/vehiculos', requireAuth, (req, res) => {
   });
 });
 
-// Función de limpieza de archivos en caso de error
+// 3.5. Subir formato de recepción firmado a un vehículo ya registrado (Carga posterior)
+app.post('/api/vehiculos/:id/formato-firmado', requireAuth, (req, res) => {
+  const vehiculoId = req.params.id;
+  
+  upload.single('formato_firmado')(req, res, async function (err) {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se ha seleccionado ningún archivo.' });
+    }
+
+    const relativePath = '/uploads/' + req.file.filename;
+
+    try {
+      // Verificar que el vehículo existe
+      const vehiculo = await dbGet('SELECT id FROM vehiculos WHERE id = ?', [vehiculoId]);
+      if (!vehiculo) {
+        fs.unlinkSync(req.file.path);
+        return res.status(404).json({ error: 'Vehículo no encontrado.' });
+      }
+
+      // Obtener el formato firmado anterior para borrarlo físicamente
+      const inventario = await dbGet('SELECT formato_firmado FROM recepcion_inventario WHERE vehiculo_id = ?', [vehiculoId]);
+      if (inventario && inventario.formato_firmado) {
+        const oldPath = path.join(__dirname, '..', 'public', inventario.formato_firmado);
+        if (fs.existsSync(oldPath)) {
+          fs.unlink(oldPath, (unlinkErr) => {
+            if (unlinkErr) console.error('Error al borrar formato firmado antiguo:', oldPath, unlinkErr);
+          });
+        }
+      }
+
+      // Actualizar en base de datos
+      await dbRun(
+        'UPDATE recepcion_inventario SET formato_firmado = ? WHERE vehiculo_id = ?',
+        [relativePath, vehiculoId]
+      );
+
+      res.json({ success: true, message: 'Formato firmado subido correctamente.', ruta: relativePath });
+    } catch (error) {
+      if (req.file) {
+        fs.unlink(req.file.path, (unlinkErr) => {
+          if (unlinkErr) console.error('Error al borrar archivo huérfano:', req.file.path, unlinkErr);
+        });
+      }
+      res.status(500).json({ error: 'Error del servidor al guardar el formato firmado.' });
+    }
+  });
+});
+
+// Función de limpieza de archivos en caso de error (sostiene arreglos u objetos de Multer fields)
 function cleanupUploadedFiles(files) {
-  if (files && files.length > 0) {
-    files.forEach(file => {
+  if (!files) return;
+  
+  let fileList = [];
+  if (Array.isArray(files)) {
+    fileList = files;
+  } else if (typeof files === 'object') {
+    Object.keys(files).forEach(field => {
+      if (Array.isArray(files[field])) {
+        fileList = fileList.concat(files[field]);
+      }
+    });
+  }
+  
+  if (fileList.length > 0) {
+    fileList.forEach(file => {
       fs.unlink(file.path, (unlinkErr) => {
         if (unlinkErr) console.error('Error al borrar archivo huérfano:', file.path, unlinkErr);
       });
