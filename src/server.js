@@ -305,7 +305,7 @@ function cleanupUploadedFiles(files) {
 // 4. Crear nueva orden de reparación
 app.post('/api/vehiculos/:id/ordenes', requireAuth, async (req, res) => {
   const vehiculoId = req.params.id;
-  const { descripcion_reparacion, costo, mecanico_asignado, estado_orden, fecha_entrega } = req.body;
+  const { descripcion_reparacion, diagnostico, costo, mecanico_asignado, estado_orden, fecha_entrega } = req.body;
 
   if (!descripcion_reparacion) {
     return res.status(400).json({ error: 'La descripción de la reparación es obligatoria.' });
@@ -317,38 +317,56 @@ app.post('/api/vehiculos/:id/ordenes', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Vehículo no encontrado.' });
     }
 
+    // Validar costo si se envía
+    let costoValor = 0;
+    if (costo !== undefined && costo !== null && costo !== '') {
+      const parsed = parseFloat(costo);
+      if (isNaN(parsed)) {
+        return res.status(400).json({ error: 'El costo debe ser un número válido.' });
+      }
+      costoValor = parsed;
+    }
+
+    // Validar y asignar valores por defecto
+    const estado = estado_orden && ['Abierta', 'Finalizada'].includes(estado_orden) ? estado_orden : 'Abierta';
+    const fecha = fecha_entrega ? fecha_entrega : null;
     await dbRun(
-      `INSERT INTO ordenes_historial (vehiculo_id, descripcion_reparacion, costo, mecanico_asignado, estado_orden, fecha_entrega)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [vehiculoId, descripcion_reparacion, costo ? parseFloat(costo) : 0, mecanico_asignado, estado_orden || 'Abierta', fecha_entrega]
+      `INSERT INTO ordenes_historial (vehiculo_id, descripcion_reparacion, diagnostico, costo, mecanico_asignado, estado_orden, fecha_entrega)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [vehiculoId, descripcion_reparacion, diagnostico || null, costoValor, mecanico_asignado, estado, fecha]
     );
 
     res.status(201).json({ success: true, message: 'Orden creada correctamente.' });
   } catch (error) {
-    res.status(500).json({ error: 'Error al crear la orden de reparación.' });
+    console.error('Error al crear orden:', error);
+    res.status(500).json({ error: 'Error interno al crear la orden de reparación.', details: error.message });
   }
 });
 
 // 5. Modificar estado u orden de reparación
 app.put('/api/ordenes/:id', requireAuth, async (req, res) => {
   const ordenId = req.params.id;
-  const { estado_orden } = req.body;
+  const { estado_orden, diagnostico } = req.body;
 
   if (!estado_orden || !['Abierta', 'Finalizada'].includes(estado_orden)) {
     return res.status(400).json({ error: 'Estado de orden inválido. Debe ser Abierta o Finalizada.' });
   }
+  // Si se intenta finalizar, el diagnóstico es obligatorio
+  if (estado_orden === 'Finalizada' && (!diagnostico || diagnostico.trim() === '')) {
+    return res.status(400).json({ error: 'Diagnóstico obligatorio al finalizar la orden.' });
+  }
 
   try {
     const result = await dbRun(
-      'UPDATE ordenes_historial SET estado_orden = ? WHERE id = ?',
-      [estado_orden, ordenId]
+      'UPDATE ordenes_historial SET estado_orden = ?, diagnostico = COALESCE(?, diagnostico) WHERE id = ?',
+      [estado_orden, diagnostico, ordenId]
     );
 
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Orden de reparación no encontrada.' });
     }
 
-    res.json({ success: true, message: 'Estado de la orden actualizado.' });
+    res.json({ success: true, message: 'Orden actualizada correctamente.' });
   } catch (error) {
     res.status(500).json({ error: 'Error al actualizar la orden.' });
   }

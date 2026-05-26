@@ -72,12 +72,19 @@ function initDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       vehiculo_id INTEGER NOT NULL,
       descripcion_reparacion TEXT,
+      diagnostico TEXT,
       costo REAL,
       mecanico_asignado TEXT,
       estado_orden TEXT CHECK(estado_orden IN ('Abierta', 'Finalizada')) DEFAULT 'Abierta',
       fecha_entrega TEXT,
       FOREIGN KEY (vehiculo_id) REFERENCES vehiculos (id) ON DELETE CASCADE
     );`);
+    // Migration: ensure diagnostico column exists
+    db.run(`ALTER TABLE ordenes_historial ADD COLUMN diagnostico TEXT`, (err) => {
+      if (err && !err.message.includes('duplicate column name') && !err.message.includes('already exists')) {
+        console.error('Error al agregar columna diagnostico:', err.message);
+      }
+    });
 
     // Tabla: fotografias
     db.run(`CREATE TABLE IF NOT EXISTS fotografias (

@@ -603,8 +603,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const normState = o.estado_orden.toLowerCase();
       const badgeClass = normState === 'abierta' ? 'bg-warning text-dark' : 'bg-success text-white';
       const actionBtnHTML = normState === 'abierta' 
-        ? `<button class="btn btn-success btn-sm py-0.5 px-2 mt-2" onclick="toggleOrderStatus(${o.id}, 'Finalizada')"><i class="bi bi-check-lg me-1"></i>Finalizar Reparación</button>`
-        : `<button class="btn btn-warning btn-sm py-0.5 px-2 mt-2 text-dark" onclick="toggleOrderStatus(${o.id}, 'Abierta')"><i class="bi bi-arrow-counterclockwise me-1"></i>Reabrir Orden</button>`;
+        ? `<button class="btn btn-outline-success btn-sm mt-2" data-diagnostico="${o.diagnostico ? o.diagnostico.replace(/"/g, '&quot;') : ''}" onclick="toggleOrderStatus(this, ${o.id}, 'Finalizada')"><i class="bi bi-check-lg me-1"></i>Finalizar</button>`
+        : `<button class="btn btn-outline-warning btn-sm mt-2" onclick="toggleOrderStatus(this, ${o.id}, 'Abierta')"><i class="bi bi-arrow-counterclockwise me-1"></i>Reabrir</button>`;
 
       const costoFormatted = o.costo ? `$${parseFloat(o.costo).toLocaleString('es-ES', { minimumFractionDigits: 2 })}` : '$0.00';
       const fechaEntregada = o.fecha_entrega ? new Date(o.fecha_entrega).toLocaleDateString('es-ES') : 'Pendiente';
@@ -617,6 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="text-secondary small font-monospace">${costoFormatted}</span>
           </div>
           <p class="text-light mb-2" style="font-size: 0.9rem; line-height: 1.4;">${o.descripcion_reparacion}</p>
+          ${o.diagnostico ? `<p class="mt-1 mb-0 text-light small"><strong>Diagnóstico:</strong> ${o.diagnostico}</p>` : ''}
           <div class="row g-1 small text-secondary border-top border-secondary pt-2" style="font-size: 0.8rem;">
             <div class="col-sm-6"><strong>Mecánico:</strong> <span class="text-light">${o.mecanico_asignado || 'Sin asignar'}</span></div>
             <div class="col-sm-6"><strong>Fecha Entrega:</strong> <span class="text-light">${fechaEntregada}</span></div>
@@ -629,15 +630,28 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- CONFIGURACIÓN GLOBAL PARA HACER EL TOGGLE ACCESIBLE DESDE EL ONCLICK DEL TIMELINE ---
-  window.toggleOrderStatus = async (ordenId, nuevoEstado) => {
+  window.toggleOrderStatus = async (buttonElem, ordenId, nuevoEstado) => {
     try {
+      // Si se intenta finalizar, preguntar por diagnóstico
+      let body = { estado_orden: nuevoEstado };
+      if (nuevoEstado === 'Finalizada') {
+        const wantsEdit = confirm('¿Desea agregar o modificar el diagnóstico antes de finalizar la reparación?');
+        if (wantsEdit) {
+          const currentDiag = buttonElem.dataset.diagnostico || '';
+          const nuevoDiag = prompt('Ingrese el diagnóstico (déjelo vacío para no cambiar):', currentDiag);
+          if (nuevoDiag !== null) {
+            body.diagnostico = nuevoDiag.trim() || null;
+          }
+        }
+      }
+
       const res = await fetch(`/api/ordenes/${ordenId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado_orden: nuevoEstado })
+        body: JSON.stringify(body)
       });
       const data = await res.json();
-      
+
       if (res.ok && data.success) {
         // Recargar el perfil del vehículo actual para actualizar el timeline
         verPerfilVehiculo(currentVehicleId);
@@ -680,17 +694,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const fecha_entrega = document.getElementById('order-fecha').value;
 
     try {
-      const res = await fetch(`/api/vehiculos/${currentVehicleId}/ordenes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        // Capturar diagnóstico (campo opcional)
+        const diagnostico = document.getElementById('order-diagnostico')?.value.trim();
+        // Construir cuerpo del POST incluyendo diagnóstico
+        const body = {
           descripcion_reparacion,
+          diagnostico: diagnostico || undefined,
           costo,
           mecanico_asignado,
           estado_orden,
           fecha_entrega
-        })
-      });
+        };
+        const res = await fetch(`/api/vehiculos/${currentVehicleId}/ordenes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
       const data = await res.json();
 
       if (res.ok && data.success) {
