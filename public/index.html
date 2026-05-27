@@ -316,13 +316,13 @@
                     <div class="accordion-item bg-transparent border-secondary mb-3">
                       <h2 class="accordion-header">
                         <button class="accordion-button bg-secondary text-light border-secondary collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree">
-                          <i class="bi bi-camera me-2 text-info"></i> 3. Carga de Fotos de Recepción
+                          <i class="bi bi-camera me-2 text-info"></i> 3. Fotos de recepción de la unidad
                         </button>
                       </h2>
                       <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#formAccordion">
                         <div class="accordion-body bg-dark text-light border-top border-secondary">
                           <div class="mb-3">
-                            <label for="fotos" class="form-label-custom">Seleccionar Fotos del Auto (Múltiples permitidas)</label>
+                            <label for="fotos" class="form-label-custom">Seleccionar Fotos de la Unidad (Máximo 8 fotos)</label>
                             <input type="file" id="fotos" name="fotos" class="form-control form-control-custom" accept="image/jpeg,image/png,image/webp" multiple>
                             <small class="text-muted d-block mt-1">Formatos admitidos: JPG, PNG, WEBP. Tamaño máx: 5MB por foto.</small>
                           </div>
@@ -444,7 +444,7 @@
 
                   <!-- Galería de Fotos -->
                   <div class="glass-card">
-                    <h5 class="fw-bold mb-3 text-info"><i class="bi bi-images me-2"></i>Fotos de Estado Inicial</h5>
+                    <h5 class="fw-bold mb-3 text-info"><i class="bi bi-images me-2"></i>Fotos de recepción de la unidad</h5>
                     <div id="profile-gallery" class="row g-2">
                       <!-- Thumbnails inyectados dinámicamente -->
                     </div>
@@ -524,6 +524,76 @@
               <div class="col-6">
                 <label for="order-fecha" class="form-label-custom">Fecha de Entrega Est. / Real</label>
                 <input type="date" id="order-fecha" class="form-control form-control-custom">
+              </div>
+            </div>
+
+            <!-- Inventario de Recepción asociado a la orden -->
+            <hr class="my-3">
+            <h6 class="fw-bold text-info">Inventario de Recepción (opcional)</h6>
+            <div class="mb-3">
+              <label for="order-nivel_combustible" class="form-label-custom d-flex justify-content-between">
+                <span>Nivel de Combustible</span>
+                <span id="order-combustible-val" class="text-info fw-bold">1/2 (Medio)</span>
+              </label>
+              <div class="fuel-track mb-2"></div>
+              <input type="range" id="order-nivel_combustible" name="nivel_combustible" class="form-range" min="0" max="4" step="1" value="2">
+              <div class="d-flex justify-content-between small text-secondary">
+                <span>Vacío</span>
+                <span>1/4</span>
+                <span>1/2</span>
+                <span>3/4</span>
+                <span>Lleno</span>
+              </div>
+            </div>
+            <div class="row g-3 mb-3">
+              <div class="col-6">
+                <label for="order-estado_espejos" class="form-label-custom">Espejos Retrovisores</label>
+                <select id="order-estado_espejos" name="estado_espejos" class="form-select form-select-custom">
+                  <option value="Buen Estado">Buen Estado</option>
+                  <option value="Rayado">Rayado</option>
+                  <option value="Roto">Roto</option>
+                  <option value="Faltante">Faltante</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label for="order-estado_antena" class="form-label-custom">Antena</label>
+                <select id="order-estado_antena" name="estado_antena" class="form-select form-select-custom">
+                  <option value="Buen Estado">Buen Estado</option>
+                  <option value="Rayado">Rayado</option>
+                  <option value="Roto">Roto</option>
+                  <option value="Faltante">Faltante</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label for="order-estado_stereo" class="form-label-custom">Estéreo / Radio</label>
+                <select id="order-estado_stereo" name="estado_stereo" class="form-select form-select-custom">
+                  <option value="Buen Estado">Buen Estado</option>
+                  <option value="Rayado">Rayado</option>
+                  <option value="Roto">Roto</option>
+                  <option value="Faltante">Faltante</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label for="order-estado_cristal" class="form-label-custom">Cristales / Parabrisas</label>
+                <select id="order-estado_cristal" name="estado_cristal" class="form-select form-select-custom">
+                  <option value="Buen Estado">Buen Estado</option>
+                  <option value="Rayado">Rayado</option>
+                  <option value="Roto">Roto</option>
+                  <option value="Faltante">Faltante</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label for="order-estado_copas" class="form-label-custom">Copas / Tapas de Ruedas</label>
+                <select id="order-estado_copas" name="estado_copas" class="form-select form-select-custom">
+                  <option value="Buen Estado">Buen Estado</option>
+                  <option value="Rayado">Rayado</option>
+                  <option value="Roto">Roto</option>
+                  <option value="Faltante">Faltante</option>
+                </select>
+              </div>
+              <div class="col-12 mb-3">
+                <label for="order-notas_estado_general" class="form-label-custom">Notas del Estado General (opcional)</label>
+                <textarea id="order-notas_estado_general" class="form-control form-control-custom" rows="2" placeholder="Observaciones adicionales del estado del vehículo"></textarea>
               </div>
             </div>
             

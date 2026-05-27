@@ -3,10 +3,11 @@ const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
+const app = express();
 const db = require('./db');
 const { requireAuth, validateVin, upload } = require('./middleware');
 
-const app = express();
+
 const PORT = process.env.PORT || 3000;
 
 // Configuración de Sesiones
@@ -154,7 +155,7 @@ app.get('/api/vehiculos/:id', requireAuth, async (req, res) => {
 app.post('/api/vehiculos', requireAuth, (req, res) => {
   // Procesamos la subida de fotos e inventario firmado
   upload.fields([
-    { name: 'fotos', maxCount: 10 },
+    { name: 'fotos', maxCount: 8 },
     { name: 'formato_firmado', maxCount: 1 }
   ])(req, res, async function (err) {
     if (err) {
@@ -303,7 +304,10 @@ function cleanupUploadedFiles(files) {
 }
 
 // 4. Crear nueva orden de reparación
-app.post('/api/vehiculos/:id/ordenes', requireAuth, async (req, res) => {
+app.post('/api/vehiculos/:id/ordenes', requireAuth, upload.fields([
+        { name: 'fotos', maxCount: 10 },
+        { name: 'formato_firmado', maxCount: 1 }
+      ]), async (req, res) => {
   const vehiculoId = req.params.id;
   const { descripcion_reparacion, diagnostico, costo, mecanico_asignado, estado_orden, fecha_entrega } = req.body;
 
@@ -315,6 +319,42 @@ app.post('/api/vehiculos/:id/ordenes', requireAuth, async (req, res) => {
     const vehiculo = await dbGet('SELECT id FROM vehiculos WHERE id = ?', [vehiculoId]);
     if (!vehiculo) {
       return res.status(404).json({ error: 'Vehículo no encontrado.' });
+    }
+
+    // Información de inventario recibida al crear la orden
+    const { nivel_combustible, estado_espejos, estado_antena, estado_stereo, estado_cristal, estado_copas, notas_estado_general } = req.body;
+    const fotos = req.files && req.files['fotos'] ? req.files['fotos'] : [];
+    const formatoFirmadoFile = req.files && req.files['formato_firmado'] ? req.files['formato_firmado'][0] : null;
+    const formato_firmado = formatoFirmadoFile ? path.relative(path.join(__dirname, '..'), formatoFirmadoFile.path) : null;
+
+    // Insertar registro de inventario si se envía alguno de los campos
+    if (
+      nivel_combustible !== undefined ||
+      estado_espejos !== undefined ||
+      estado_antena !== undefined ||
+      estado_stereo !== undefined ||
+      estado_cristal !== undefined ||
+      estado_copas !== undefined ||
+      notas_estado_general !== undefined ||
+      formato_firmado !== undefined
+    ) {
+      const fechaIngreso = new Date().toISOString();
+      await dbRun(
+        `INSERT INTO recepcion_inventario (vehiculo_id, nivel_combustible, estado_espejos, estado_antena, estado_stereo, estado_cristal, estado_copas, notas_estado_general, fecha_ingreso, formato_firmado)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          vehiculoId,
+          nivel_combustible || null,
+          estado_espejos || null,
+          estado_antena || null,
+          estado_stereo || null,
+          estado_cristal || null,
+          estado_copas || null,
+          notas_estado_general || null,
+          fechaIngreso,
+          formato_firmado
+        ]
+      );
     }
 
     // Validar costo si se envía
@@ -341,9 +381,7 @@ app.post('/api/vehiculos/:id/ordenes', requireAuth, async (req, res) => {
     console.error('Error al crear orden:', error);
     res.status(500).json({ error: 'Error interno al crear la orden de reparación.', details: error.message });
   }
-});
-
-// 5. Modificar estado u orden de reparación
+}); // end POST /api/vehiculos/:id/ordenes de reparación
 app.put('/api/ordenes/:id', requireAuth, async (req, res) => {
   const ordenId = req.params.id;
   const { estado_orden, diagnostico } = req.body;

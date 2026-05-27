@@ -696,21 +696,39 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
         // Capturar diagnóstico (campo opcional)
         const diagnostico = document.getElementById('order-diagnostico')?.value.trim();
-        // Construir cuerpo del POST incluyendo diagnóstico
-        const body = {
-          descripcion_reparacion,
-          diagnostico: diagnostico || undefined,
-          costo,
-          mecanico_asignado,
-          estado_orden,
-          fecha_entrega
-        };
+        // Construir FormData para envío multipart, incluyendo inventario y archivos
+        const formData = new FormData();
+        formData.append('descripcion_reparacion', descripcion_reparacion);
+        if (diagnostico) formData.append('diagnostico', diagnostico);
+        formData.append('costo', costo);
+        formData.append('mecanico_asignado', mecanico_asignado);
+        formData.append('estado_orden', estado_orden);
+        formData.append('fecha_entrega', fecha_entrega);
+        // Inventario opcional
+        const nivelCombustible = document.getElementById('order-nivel_combustible')?.value;
+        if (nivelCombustible !== undefined) formData.append('nivel_combustible', nivelCombustible);
+        const fields = ['estado_espejos', 'estado_antena', 'estado_stereo', 'estado_cristal', 'estado_copas', 'notas_estado_general'];
+        fields.forEach(f => {
+          const val = document.getElementById(`order-${f}`)?.value;
+          if (val !== undefined) formData.append(f, val);
+        });
+        // Archivos de fotos
+        const fotosInput = document.getElementById('order-fotos');
+        if (fotosInput && fotosInput.files) {
+          for (let i = 0; i < fotosInput.files.length; i++) {
+            formData.append('fotos', fotosInput.files[i]);
+          }
+        }
+        // Formato firmado
+        const firmadoInput = document.getElementById('order-formato_firmado');
+        if (firmadoInput && firmadoInput.files && firmadoInput.files[0]) {
+          formData.append('formato_firmado', firmadoInput.files[0]);
+        }
         const res = await fetch(`/api/vehiculos/${currentVehicleId}/ordenes`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
+          body: formData
         });
-      const data = await res.json();
+        const data = await res.json();
 
       if (res.ok && data.success) {
         orderModal.hide();
