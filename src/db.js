@@ -77,12 +77,26 @@ function initDb() {
       mecanico_asignado TEXT,
       estado_orden TEXT CHECK(estado_orden IN ('Abierta', 'Finalizada')) DEFAULT 'Abierta',
       fecha_entrega TEXT,
+      formato_firmado TEXT,
+      fecha_carga_formato TEXT,
       FOREIGN KEY (vehiculo_id) REFERENCES vehiculos (id) ON DELETE CASCADE
     );`);
     // Migration: ensure diagnostico column exists
     db.run(`ALTER TABLE ordenes_historial ADD COLUMN diagnostico TEXT`, (err) => {
       if (err && !err.message.includes('duplicate column name') && !err.message.includes('already exists')) {
         console.error('Error al agregar columna diagnostico:', err.message);
+      }
+    });
+    // Migration: add formato_firmado column if missing
+    db.run(`ALTER TABLE ordenes_historial ADD COLUMN formato_firmado TEXT`, (err) => {
+      if (err && !err.message.includes('duplicate column name') && !err.message.includes('already exists')) {
+        console.error('Error al agregar columna formato_firmado:', err.message);
+      }
+    });
+    // Migration: add fecha_carga_formato column if missing
+    db.run(`ALTER TABLE ordenes_historial ADD COLUMN fecha_carga_formato TEXT`, (err) => {
+      if (err && !err.message.includes('duplicate column name') && !err.message.includes('already exists')) {
+        console.error('Error al agregar columna fecha_carga_formato:', err.message);
       }
     });
 

@@ -244,7 +244,7 @@
                             <div class="col-md-12 mb-3">
                               <label for="nivel_combustible" class="form-label-custom d-flex justify-content-between">
                                 <span>Nivel de Combustible</span>
-                                <span id="combustible-val" class="text-info fw-bold">1/2 (Medio)</span>
+                                <span id="combustible-val" class="text-info fw-bold">1/2 (Tanque Medio)</span>
                               </label>
                               <div class="fuel-track mb-2"></div>
                               <input type="range" id="nivel_combustible" name="nivel_combustible" class="form-range" min="0" max="4" step="1" value="2">
@@ -327,9 +327,9 @@
                             <small class="text-muted d-block mt-1">Formatos admitidos: JPG, PNG, WEBP. Tamaño máx: 5MB por foto.</small>
                           </div>
                           <div class="mb-3 border-top border-secondary pt-3">
-                            <label for="formato_firmado" class="form-label-custom">Subir Formato de Recepción Firmado (Opcional)</label>
-                            <input type="file" id="formato_firmado" name="formato_firmado" class="form-control form-control-custom" accept="image/jpeg,image/png,image/webp,application/pdf">
-                            <small class="text-muted d-block mt-1">Formatos admitidos: JPG, PNG, WEBP o PDF. Tamaño máx: 5MB.</small>
+                           <label for="reception-formato_firmado" class="form-label-custom">Subir Formato de Recepción Firmado (Opcional)</label>
+                             <input type="file" id="reception-formato_firmado" name="formato_firmado" class="form-control form-control-custom" accept="image/jpeg,image/png,image/webp,application/pdf">
+                             <small class="text-muted d-block mt-1">Formatos admitidos: JPG, PNG, WEBP o PDF. Tamaño máx: 5MB.</small>
                           </div>
                           <!-- Previsualización de imágenes seleccionadas -->
                           <div id="previews-container" class="upload-preview-container"></div>
@@ -489,7 +489,7 @@
           <h5 class="modal-title fw-bold" id="orderModalLabel"><i class="bi bi-plus-circle text-info me-2"></i>Nueva Orden de Reparación</h5>
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <form id="order-form" novalidate>
+        <form id="order-form" enctype="multipart/form-data" novalidate>
           <div class="modal-body">
             <div class="mb-3">
               <label for="order-desc" class="form-label-custom">Descripción del Trabajo / Reparación <span class="text-danger">*</span></label>
@@ -500,6 +500,13 @@
             <div class="mb-3">
               <label for="order-diagnostico" class="form-label-custom">Diagnóstico (opcional)</label>
               <textarea id="order-diagnostico" class="form-control form-control-custom" rows="2" placeholder="Diagnóstico del problema"></textarea>
+            </div>
+
+            <!-- Photos for the repair order (max 8) -->
+            <div class="mb-3">
+              <label for="order-fotos" class="form-label-custom">Fotos de la unidad (máximo 8)</label>
+              <input type="file" id="order-fotos" name="fotos" class="form-control form-control-custom" accept="image/jpeg,image/png,image/webp" multiple>
+              <small class="text-muted d-block mt-1">Formatos admitidos: JPG, PNG, WEBP. Tamaño máx: 5MB por foto.</small>
             </div>
 
             <div class="row g-3 mb-3">
@@ -597,11 +604,20 @@
               </div>
             </div>
             
+            <!-- Formato firmado de la orden -->
+            <div class="mb-3">
+              <label for="order-formato_firmado" class="form-label-custom">Formato de Recepción Firmado <span class="text-danger">*</span></label>
+              <input type="file" id="order-formato_firmado" name="formato_firmado" class="form-control form-control-custom" accept="image/jpeg,image/png,image/webp,application/pdf" required>
+              <small class="text-muted d-block mt-1">Formatos admitidos: JPG, PNG, WEBP o PDF. Tamaño máx: 5MB.</small>
+              <div class="invalid-feedback">El formato firmado es obligatorio para crear la orden.</div>
+            </div>
+
             <div id="order-error" class="alert alert-danger mt-3 p-2 text-center" style="display: none; font-size: 0.875rem;"></div>
           </div>
           <div class="modal-footer modal-footer-custom">
             <button type="button" class="btn btn-secondary-custom" data-bs-dismiss="modal">Cancelar</button>
             <button type="submit" class="btn btn-primary-custom">Guardar Orden</button>
+            <button type="button" id="print-order-btn" class="btn btn-info-custom ms-2" style="display:none;">Imprimir Recepción</button>
           </div>
         </form>
       </div>

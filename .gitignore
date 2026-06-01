@@ -24,3 +24,9 @@ yarn-error.log*
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Subidas e imágenes de prueba de usuarios
+public/uploads/
+
+# Scripts de scratch temporales
+scratch/

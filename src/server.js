@@ -136,7 +136,7 @@ app.get('/api/vehiculos/:id', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Vehículo no encontrado.' });
     }
 
-    const inventario = await dbGet('SELECT * FROM recepcion_inventario WHERE vehiculo_id = ?', [id]);
+    const inventario = await dbGet('SELECT * FROM recepcion_inventario WHERE vehiculo_id = ? ORDER BY id DESC LIMIT 1', [id]);
     const fotografias = await dbAll('SELECT * FROM fotografias WHERE vehiculo_id = ?', [id]);
     const ordenes = await dbAll('SELECT * FROM ordenes_historial WHERE vehiculo_id = ? ORDER BY id DESC', [id]);
 
@@ -179,6 +179,12 @@ app.post('/api/vehiculos', requireAuth, (req, res) => {
       marca, modelo, ano, color, cilindrada, placa, dueno, telefono,
       nivel_combustible, estado_espejos, estado_antena, estado_stereo, estado_cristal, estado_copas, notas_estado_general
     } = req.body;
+    console.log('Files received:', req.files);
+    // Validar que se envíen fotos de la unidad recibida
+    if (!req.files || !req.files['fotos'] || req.files['fotos'].length === 0) {
+      cleanupUploadedFiles(req.files);
+      return res.status(400).json({ error: 'Se requieren fotos de la unidad recibida.' });
+    }
 
     try {
       // 1. Insertar Vehículo
@@ -303,85 +309,165 @@ function cleanupUploadedFiles(files) {
   }
 }
 
-// 4. Crear nueva orden de reparación
-app.post('/api/vehiculos/:id/ordenes', requireAuth, upload.fields([
-        { name: 'fotos', maxCount: 10 },
-        { name: 'formato_firmado', maxCount: 1 }
-      ]), async (req, res) => {
-  const vehiculoId = req.params.id;
-  const { descripcion_reparacion, diagnostico, costo, mecanico_asignado, estado_orden, fecha_entrega } = req.body;
-
-  if (!descripcion_reparacion) {
-    return res.status(400).json({ error: 'La descripción de la reparación es obligatoria.' });
-  }
-
+// 4.1. Obtener inventario (incluido formato firmado) asociado a una orden
+app.get('/api/ordenes/:id/inventario', requireAuth, async (req, res) => {
+  const ordenId = req.params.id;
   try {
-    const vehiculo = await dbGet('SELECT id FROM vehiculos WHERE id = ?', [vehiculoId]);
-    if (!vehiculo) {
-      return res.status(404).json({ error: 'Vehículo no encontrado.' });
+    // Obtener la orden para saber el vehiculo_id
+    const orden = await dbGet('SELECT vehiculo_id FROM ordenes_historial WHERE id = ?', [ordenId]);
+    if (!orden) return res.status(404).json({ error: 'Orden no encontrada.' });
+    // Obtener el inventario más reciente del vehículo (el creado al generar la orden)
+    const inventario = await dbGet(
+      `SELECT * FROM recepcion_inventario WHERE vehiculo_id = ? ORDER BY id DESC LIMIT 1`,
+      [orden.vehiculo_id]
+    );
+    if (!inventario) return res.status(404).json({ error: 'Inventario no encontrado para esta orden.' });
+    res.json({ success: true, inventario });
+  } catch (error) {
+    console.error('Error al obtener inventario de la orden:', error);
+    res.status(500).json({ error: 'Error interno al obtener inventario.' });
+  }
+});
+
+// 4. Crear nueva orden de reparación con documento firmado
+  app.post('/api/vehiculos/:id/ordenes', requireAuth, upload.fields([
+    { name: 'fotos', maxCount: 10 },
+    { name: 'formato_firmado', maxCount: 1 }
+  ]), async (req, res) => {
+    const vehiculoId = req.params.id;
+    const { descripcion_reparacion, diagnostico, costo, mecanico_asignado, estado_orden, fecha_entrega } = req.body;
+
+    // Validar descripción de la reparación
+    if (!descripcion_reparacion) {
+      return res.status(400).json({ error: 'La descripción de la reparación es obligatoria.' });
     }
 
-    // Información de inventario recibida al crear la orden
-    const { nivel_combustible, estado_espejos, estado_antena, estado_stereo, estado_cristal, estado_copas, notas_estado_general } = req.body;
-    const fotos = req.files && req.files['fotos'] ? req.files['fotos'] : [];
-    const formatoFirmadoFile = req.files && req.files['formato_firmado'] ? req.files['formato_firmado'][0] : null;
-    const formato_firmado = formatoFirmadoFile ? path.relative(path.join(__dirname, '..'), formatoFirmadoFile.path) : null;
+    // Validar fotos
+    if (!req.files || !req.files['fotos'] || req.files['fotos'].length === 0) {
+      cleanupUploadedFiles(req.files);
+      return res.status(400).json({ error: 'Se requieren fotos de la unidad recibida para la orden.' });
+    }
 
-    // Insertar registro de inventario si se envía alguno de los campos
-    if (
-      nivel_combustible !== undefined ||
-      estado_espejos !== undefined ||
-      estado_antena !== undefined ||
-      estado_stereo !== undefined ||
-      estado_cristal !== undefined ||
-      estado_copas !== undefined ||
-      notas_estado_general !== undefined ||
-      formato_firmado !== undefined
-    ) {
-      const fechaIngreso = new Date().toISOString();
+    // Validar formato firmado
+    if (!req.files['formato_firmado'] || req.files['formato_firmado'].length === 0) {
+      cleanupUploadedFiles(req.files);
+      return res.status(400).json({ error: 'Se requiere el formato firmado para la orden.' });
+    }
+
+    try {
+      // Verificar que el vehículo existe
+      const vehiculo = await dbGet('SELECT id FROM vehiculos WHERE id = ?', [vehiculoId]);
+      if (!vehiculo) {
+        cleanupUploadedFiles(req.files);
+        return res.status(404).json({ error: 'Vehículo no encontrado.' });
+      }
+
+      // Preparar datos de inventario (opcional)
+      const { nivel_combustible, estado_espejos, estado_antena, estado_stereo, estado_cristal, estado_copas, notas_estado_general } = req.body;
+      const fotos = req.files && req.files['fotos'] ? req.files['fotos'] : [];
+      const formatoFirmadoFile = req.files && req.files['formato_firmado'] ? req.files['formato_firmado'][0] : null;
+      const formato_firmado = formatoFirmadoFile ? '/uploads/' + formatoFirmadoFile.filename : null;
+
+      // Insertar inventario asociado a la orden (si se envían campos)
+      if (
+        nivel_combustible !== undefined ||
+        estado_espejos !== undefined ||
+        estado_antena !== undefined ||
+        estado_stereo !== undefined ||
+        estado_cristal !== undefined ||
+        estado_copas !== undefined ||
+        notas_estado_general !== undefined ||
+        formato_firmado !== undefined
+      ) {
+        const fechaIngreso = new Date().toISOString();
+        await dbRun(
+          `INSERT INTO recepcion_inventario (vehiculo_id, nivel_combustible, estado_espejos, estado_antena, estado_stereo, estado_cristal, estado_copas, notas_estado_general, fecha_ingreso, formato_firmado)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            vehiculoId,
+            nivel_combustible || null,
+            estado_espejos || null,
+            estado_antena || null,
+            estado_stereo || null,
+            estado_cristal || null,
+            estado_copas || null,
+            notas_estado_general || null,
+            fechaIngreso,
+            formato_firmado
+          ]
+        );
+      }
+
+      // Insertar fotos de la orden
+      if (fotos.length > 0) {
+        for (const file of fotos) {
+          const relativePath = '/uploads/' + file.filename;
+          await dbRun(
+            `INSERT INTO fotografias (vehiculo_id, ruta_archivo) VALUES (?, ?)`,
+            [vehiculoId, relativePath]
+          );
+        }
+      }
+
+      // Validar y formatear costo
+      let costoValor = 0;
+      if (costo !== undefined && costo !== null && costo !== '') {
+        const parsed = parseFloat(costo);
+        if (isNaN(parsed)) {
+          cleanupUploadedFiles(req.files);
+          return res.status(400).json({ error: 'El costo debe ser un número válido.' });
+        }
+        costoValor = parsed;
+      }
+
+      // Determinar estado y fecha por defecto
+      const estado = estado_orden && ['Abierta', 'Finalizada'].includes(estado_orden) ? estado_orden : 'Abierta';
+      const fecha = fecha_entrega ? fecha_entrega : null;
+
+      // Insertar la orden en ordenes_historial, incluyendo documento firmado y timestamp
+      const nowIso = new Date().toISOString();
       await dbRun(
-        `INSERT INTO recepcion_inventario (vehiculo_id, nivel_combustible, estado_espejos, estado_antena, estado_stereo, estado_cristal, estado_copas, notas_estado_general, fecha_ingreso, formato_firmado)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO ordenes_historial (vehiculo_id, descripcion_reparacion, diagnostico, costo, mecanico_asignado, estado_orden, fecha_entrega, formato_firmado, fecha_carga_formato)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           vehiculoId,
-          nivel_combustible || null,
-          estado_espejos || null,
-          estado_antena || null,
-          estado_stereo || null,
-          estado_cristal || null,
-          estado_copas || null,
-          notas_estado_general || null,
-          fechaIngreso,
-          formato_firmado
+          descripcion_reparacion,
+          diagnostico || null,
+          costoValor,
+          mecanico_asignado || null,
+          estado,
+          fecha,
+          formato_firmado,
+          nowIso
         ]
       );
-    }
 
-    // Validar costo si se envía
-    let costoValor = 0;
-    if (costo !== undefined && costo !== null && costo !== '') {
-      const parsed = parseFloat(costo);
-      if (isNaN(parsed)) {
-        return res.status(400).json({ error: 'El costo debe ser un número válido.' });
+      res.status(201).json({ success: true, message: 'Orden creada correctamente.' });
+    } catch (error) {
+      console.error('Error al crear orden:', error);
+      cleanupUploadedFiles(req.files);
+      if (error.message.includes('UNIQUE constraint failed')) {
+        return res.status(400).json({ error: 'La placa o el Número de Serie de Motor (VIN) ya se encuentran registrados.' });
       }
-      costoValor = parsed;
+      res.status(500).json({ error: 'Error interno al crear la orden de reparación.', details: error.message });
     }
+  }); // end POST /api/vehiculos/:id/ordenes
 
-    // Validar y asignar valores por defecto
-    const estado = estado_orden && ['Abierta', 'Finalizada'].includes(estado_orden) ? estado_orden : 'Abierta';
-    const fecha = fecha_entrega ? fecha_entrega : null;
-    await dbRun(
-      `INSERT INTO ordenes_historial (vehiculo_id, descripcion_reparacion, diagnostico, costo, mecanico_asignado, estado_orden, fecha_entrega)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [vehiculoId, descripcion_reparacion, diagnostico || null, costoValor, mecanico_asignado, estado, fecha]
-    );
+  // 5. Obtener detalle de una orden, incluido documento firmado
+  app.get('/api/ordenes/:id', requireAuth, async (req, res) => {
+    const ordenId = req.params.id;
+    try {
+      const orden = await dbGet('SELECT * FROM ordenes_historial WHERE id = ?', [ordenId]);
+      if (!orden) {
+        return res.status(404).json({ error: 'Orden no encontrada.' });
+      }
+      res.json({ success: true, orden });
+    } catch (error) {
+      console.error('Error al obtener orden:', error);
+      res.status(500).json({ error: 'Error interno al obtener la orden.' });
+    }
+  });
 
-    res.status(201).json({ success: true, message: 'Orden creada correctamente.' });
-  } catch (error) {
-    console.error('Error al crear orden:', error);
-    res.status(500).json({ error: 'Error interno al crear la orden de reparación.', details: error.message });
-  }
-}); // end POST /api/vehiculos/:id/ordenes de reparación
 app.put('/api/ordenes/:id', requireAuth, async (req, res) => {
   const ordenId = req.params.id;
   const { estado_orden, diagnostico } = req.body;

@@ -3,6 +3,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   // --- INSTANCIAS DE MODALES BOOTSTRAP ---
   let orderModal = null;
+let lastCreatedOrder = null; // store last order for printing
   let imageModal = null;
   try {
     if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
@@ -333,6 +334,15 @@ document.addEventListener('DOMContentLoaded', () => {
     fuelValText.innerText = combustibleNiveles[e.target.value];
   });
 
+  // Fix #5: listener para el slider de combustible dentro del modal de órdenes
+  const orderFuelRange = document.getElementById('order-nivel_combustible');
+  const orderFuelValText = document.getElementById('order-combustible-val');
+  if (orderFuelRange && orderFuelValText) {
+    orderFuelRange.addEventListener('input', (e) => {
+      orderFuelValText.innerText = combustibleNiveles[e.target.value];
+    });
+  }
+
   // Previsualización de imágenes seleccionadas
   fotosInput.addEventListener('change', (e) => {
     previewsContainer.innerHTML = '';
@@ -426,6 +436,9 @@ document.addEventListener('DOMContentLoaded', () => {
     paneSearch.classList.add('d-none');
     paneReception.classList.add('d-none');
     paneProfile.classList.remove('d-none');
+    // Fix #11: reflejar estado activo en el menú lateral
+    tabSearchBtn.classList.remove('active');
+    tabReceptionBtn.classList.remove('active');
 
     try {
       const res = await fetch(`/api/vehiculos/${id}`);
@@ -440,7 +453,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderVehicleProfile(data) {
     currentVehicleData = data;
-    const { vehiculo, inventario, fotografias, ordenes } = data;
+    const { vehiculo, fotografias, ordenes } = data;
+    // Fix #7: inventario puede ser null si el registro no existe
+    const inventario = data.inventario || {};
 
     // 1. Datos Generales
     profileTitle.innerText = `${vehiculo.marca} ${vehiculo.modelo}`;
@@ -586,62 +601,122 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderTimeline(ordenes) {
-    profileTimeline.innerHTML = '';
-    if (ordenes.length === 0) {
-      emptyTimelineMsg.style.display = 'block';
-      profileTimeline.style.display = 'none';
-      return;
-    }
-
-    emptyTimelineMsg.style.display = 'none';
-    profileTimeline.style.display = 'block';
-
-    ordenes.forEach(o => {
-      const item = document.createElement('div');
-      item.className = 'timeline-item';
-      
-      const normState = o.estado_orden.toLowerCase();
-      const badgeClass = normState === 'abierta' ? 'bg-warning text-dark' : 'bg-success text-white';
-      const actionBtnHTML = normState === 'abierta' 
-        ? `<button class="btn btn-outline-success btn-sm mt-2" data-diagnostico="${o.diagnostico ? o.diagnostico.replace(/"/g, '&quot;') : ''}" onclick="toggleOrderStatus(this, ${o.id}, 'Finalizada')"><i class="bi bi-check-lg me-1"></i>Finalizar</button>`
-        : `<button class="btn btn-outline-warning btn-sm mt-2" onclick="toggleOrderStatus(this, ${o.id}, 'Abierta')"><i class="bi bi-arrow-counterclockwise me-1"></i>Reabrir</button>`;
-
-      const costoFormatted = o.costo ? `$${parseFloat(o.costo).toLocaleString('es-ES', { minimumFractionDigits: 2 })}` : '$0.00';
-      const fechaEntregada = o.fecha_entrega ? new Date(o.fecha_entrega).toLocaleDateString('es-ES') : 'Pendiente';
-
-      item.innerHTML = `
-        <div class="timeline-marker ${normState}"></div>
-        <div class="timeline-content fade-in-section">
-          <div class="d-flex justify-content-between align-items-center mb-1">
-            <span class="badge ${badgeClass} fw-bold" style="font-size: 0.75rem;">Orden #${o.id} - ${o.estado_orden}</span>
-            <span class="text-secondary small font-monospace">${costoFormatted}</span>
-          </div>
-          <p class="text-light mb-2" style="font-size: 0.9rem; line-height: 1.4;">${o.descripcion_reparacion}</p>
-          ${o.diagnostico ? `<p class="mt-1 mb-0 text-light small"><strong>Diagnóstico:</strong> ${o.diagnostico}</p>` : ''}
-          <div class="row g-1 small text-secondary border-top border-secondary pt-2" style="font-size: 0.8rem;">
-            <div class="col-sm-6"><strong>Mecánico:</strong> <span class="text-light">${o.mecanico_asignado || 'Sin asignar'}</span></div>
-            <div class="col-sm-6"><strong>Fecha Entrega:</strong> <span class="text-light">${fechaEntregada}</span></div>
-          </div>
-          ${actionBtnHTML}
-        </div>
-      `;
-      profileTimeline.appendChild(item);
-    });
+  profileTimeline.innerHTML = '';
+  if (ordenes.length === 0) {
+    emptyTimelineMsg.style.display = 'block';
+    profileTimeline.style.display = 'none';
+    return;
   }
+
+  emptyTimelineMsg.style.display = 'none';
+  profileTimeline.style.display = 'block';
+
+  ordenes.forEach(o => {
+    const item = document.createElement('div');
+    item.className = 'timeline-item';
+
+    const normState = o.estado_orden.toLowerCase();
+    const badgeClass = normState === 'abierta' ? 'bg-warning text-dark' : 'bg-success text-white';
+    const actionBtnHTML = normState === 'abierta' 
+      ? `<button class="btn btn-outline-success btn-sm mt-2" data-diagnostico="${o.diagnostico ? o.diagnostico.replace(/"/g, '&quot;') : ''}" onclick="toggleOrderStatus(this, ${o.id}, 'Finalizada')"><i class="bi bi-check-lg me-1"></i>Finalizar</button>`
+      : `<button class="btn btn-outline-warning btn-sm mt-2" onclick="toggleOrderStatus(this, ${o.id}, 'Abierta')"><i class="bi bi-arrow-counterclockwise me-1"></i>Reabrir</button>`;
+
+    const costoFormatted = o.costo ? `$${parseFloat(o.costo).toLocaleString('es-ES', { minimumFractionDigits: 2 })}` : '$0.00';
+    const fechaEntregada = o.fecha_entrega ? new Date(o.fecha_entrega).toLocaleDateString('es-ES') : 'Pendiente';
+
+    item.innerHTML = `
+      <div class="timeline-marker ${normState}"></div>
+      <div class="timeline-content fade-in-section">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="badge ${badgeClass} fw-bold" style="font-size: 0.75rem;">Orden #${o.id} - ${o.estado_orden}</span>
+          <span class="text-secondary small font-monospace">${costoFormatted}</span>
+        </div>
+        <p class="text-light mb-2" style="font-size: 0.9rem; line-height: 1.4;">${o.descripcion_reparacion}</p>
+        ${o.diagnostico ? `<p class="mt-1 mb-0 text-light small"><strong>Diagnóstico:</strong> ${o.diagnostico}</p>` : ''}
+        <div class="row g-1 small text-secondary border-top border-secondary pt-2" style="font-size: 0.8rem;">
+          <div class="col-sm-6"><strong>Mecánico:</strong> <span class="text-light">${o.mecanico_asignado || 'Sin asignar'}</span></div>
+          <div class="col-sm-6"><strong>Fecha Entrega:</strong> <span class="text-light">${fechaEntregada}</span></div>
+        </div>
+        ${actionBtnHTML}
+      </div>
+    `;
+
+    // Click on the timeline item (excluding the action button) refreshes the vehicle profile data
+    item.addEventListener('click', (e) => {
+      // If the click originated from a button inside the item, let the button handler run instead
+      if (e.target.closest('button')) return;
+      loadOrderDetails(o.id);
+    });
+
+    profileTimeline.appendChild(item);
+  });
+}
+
+// Load order details and refresh the relevant UI sections (inventory, signed format, and photo gallery)
+function loadOrderDetails(orderId) {
+  // Fetch order details including signed document
+  fetch(`/api/ordenes/${orderId}`)
+    .then(res => res.json())
+    .then(data => {
+      if (!data.success) {
+        console.error('Error fetching order:', data.error);
+        return;
+      }
+      const orden = data.orden;
+      // Update signed document status placeholder if present
+      const formatStatusDiv = document.getElementById('profile-signed-format-status');
+      if (formatStatusDiv) {
+        formatStatusDiv.innerHTML = '';
+        if (orden.formato_firmado) {
+          const isPdf = orden.formato_firmado.toLowerCase().endsWith('.pdf');
+          const iconClass = isPdf ? 'bi-filetype-pdf text-danger' : 'bi-file-earmark-image text-success';
+          formatStatusDiv.innerHTML = `
+            <div class="d-flex align-items-center justify-content-between p-2 bg-dark rounded border border-secondary">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi ${iconClass}" style="font-size: 1.5rem;"></i>
+                <span class="text-light small text-truncate" style="max-width: 150px;" title="${orden.formato_firmado.split('/').pop()}">
+                  ${orden.formato_firmado.split('/').pop()}
+                </span>
+              </div>
+              <a href="${orden.formato_firmado}" target="_blank" class="btn btn-secondary-custom btn-sm py-0.5 px-2">
+                <i class="bi bi-eye me-1"></i> Ver
+              </a>
+            </div>`;
+        } else {
+          formatStatusDiv.innerHTML = `<p class="text-secondary small mb-2 text-center" style="font-style: italic;">No se ha cargado el formato firmado.</p>`;
+        }
+      }
+      // Refresh vehicle profile to show inventory and photos for this order's vehicle
+      // (this will load the latest inventory; for a more precise snapshot you could fetch a specific inventory record).
+      if (currentVehicleId) {
+        verPerfilVehiculo(currentVehicleId);
+      }
+    })
+    .catch(err => console.error('Error loading order details:', err));
+}
+
+
 
   // --- CONFIGURACIÓN GLOBAL PARA HACER EL TOGGLE ACCESIBLE DESDE EL ONCLICK DEL TIMELINE ---
   window.toggleOrderStatus = async (buttonElem, ordenId, nuevoEstado) => {
     try {
-      // Si se intenta finalizar, preguntar por diagnóstico
+      // Fix #8: declarar body primero; si se finaliza, incluir siempre el diagnóstico
+      // para que el servidor no rechace la petición con error 400.
       let body = { estado_orden: nuevoEstado };
       if (nuevoEstado === 'Finalizada') {
+        const currentDiag = buttonElem.dataset.diagnostico || '';
         const wantsEdit = confirm('¿Desea agregar o modificar el diagnóstico antes de finalizar la reparación?');
         if (wantsEdit) {
-          const currentDiag = buttonElem.dataset.diagnostico || '';
-          const nuevoDiag = prompt('Ingrese el diagnóstico (déjelo vacío para no cambiar):', currentDiag);
+          const nuevoDiag = prompt('Ingrese el diagnóstico:', currentDiag);
           if (nuevoDiag !== null) {
-            body.diagnostico = nuevoDiag.trim() || null;
+            body.diagnostico = nuevoDiag.trim() || currentDiag;
+          } else {
+            // Usuario canceló el prompt → mantener el actual
+            body.diagnostico = currentDiag;
           }
+        } else {
+          // No quiere editar → enviar el diagnóstico existente para cumplir la validación del servidor
+          body.diagnostico = currentDiag;
         }
       }
 
@@ -704,9 +779,11 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('mecanico_asignado', mecanico_asignado);
         formData.append('estado_orden', estado_orden);
         formData.append('fecha_entrega', fecha_entrega);
-        // Inventario opcional
+        // Inventario opcional — convertir slider a texto (igual que en la recepción)
         const nivelCombustible = document.getElementById('order-nivel_combustible')?.value;
-        if (nivelCombustible !== undefined) formData.append('nivel_combustible', nivelCombustible);
+        if (nivelCombustible !== undefined) {
+          formData.append('nivel_combustible', combustibleNiveles[nivelCombustible] || nivelCombustible);
+        }
         const fields = ['estado_espejos', 'estado_antena', 'estado_stereo', 'estado_cristal', 'estado_copas', 'notas_estado_general'];
         fields.forEach(f => {
           const val = document.getElementById(`order-${f}`)?.value;
@@ -732,7 +809,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (res.ok && data.success) {
         orderModal.hide();
-        // Recargar perfil para ver la nueva orden
+        // Fix #1 y #2: declarar `order` primero, eliminar llamada a función inexistente
+        const order = data.orden || {};
+        lastCreatedOrder = order;
+        // Mostrar botón de impresión si existe
+        const printBtn = document.getElementById('print-order-btn');
+        if (printBtn) printBtn.style.display = 'inline-block';
+        // Intentar abrir ventana de impresión con los datos de la orden
+        try {
+          const printWindow = window.open('', '_blank');
+          if (printWindow) {
+            const veh = currentVehicleData ? currentVehicleData.vehiculo : {};
+            const printContent = `
+              <html><head><title>Orden #${order.id || 'Nueva'}</title>
+              <style>
+                body {font-family: Arial, sans-serif; margin: 20px;}
+                .header {text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px;}
+                .section {margin-bottom: 12px;}
+                .label {font-weight: bold;}
+                table {width:100%; border-collapse: collapse; margin-top: 10px;}
+                td, th {border: 1px solid #ccc; padding: 6px 10px; font-size: 0.9rem;}
+                th {background: #f1f5f9;}
+              </style>
+              </head><body>
+                <div class="header"><h2>TALLER BELTRÁN</h2><h3>Orden de Reparación #${order.id || ''}</h3></div>
+                <table>
+                  <tr><th>Vehículo</th><td>${veh.marca || ''} ${veh.modelo || ''}</td><th>Placa</th><td>${veh.placa || ''}</td></tr>
+                  <tr><th>Dueño</th><td>${veh.dueno || ''}</td><th>Teléfono</th><td>${veh.telefono || ''}</td></tr>
+                </table>
+                <div class="section" style="margin-top:15px;"><span class="label">Descripción del trabajo:</span><p>${order.descripcion_reparacion || ''}</p></div>
+                <div class="section"><span class="label">Diagnóstico:</span><p>${order.diagnostico || '-'}</p></div>
+                <table>
+                  <tr><th>Mecánico</th><td>${order.mecanico_asignado || '-'}</td><th>Estado</th><td>${order.estado_orden || ''}</td></tr>
+                  <tr><th>Costo Estimado</th><td>$${order.costo || '0.00'}</td><th>Fecha Entrega</th><td>${order.fecha_entrega || 'Pendiente'}</td></tr>
+                </table>
+              </body></html>`;
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+            printWindow.print();
+          }
+        } catch (e) { console.error('Error al imprimir orden:', e); }
+        // Recargar perfil del vehículo para mostrar la nueva orden en el timeline
         verPerfilVehiculo(currentVehicleId);
       } else {
         orderError.innerText = data.error || 'Error al guardar la orden de reparación.';
